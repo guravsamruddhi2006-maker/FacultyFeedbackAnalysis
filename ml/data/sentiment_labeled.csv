@@ -1,0 +1,13 @@
+text,label
+"The faculty explained every concept clearly and patiently." ,positive
+"The practical examples made the subject easy to understand." ,positive
+"Excellent subject knowledge and very supportive during doubts." ,positive
+"Classes were engaging and the teacher encouraged participation." ,positive
+"The lectures were clear, well paced and useful." ,positive
+"The examples were helpful and the syllabus was completed on time." ,positive
+"The teacher was helpful but the pace was a bit fast." ,neutral
+"The assignments were okay but the feedback was delayed." ,neutral
+"The subject was interesting but the sessions felt long." ,neutral
+"The lectures were confusing and rushed at times." ,negative
+"The faculty was rude and the response to doubts was poor." ,negative
+"The syllabus coverage was incomplete and the examples were missing." ,negative

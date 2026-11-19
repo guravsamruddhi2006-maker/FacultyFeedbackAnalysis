@@ -1,0 +1,84 @@
+{
+  "validated": false,
+  "model_name": "tfidf-logistic-regression-sentiment-v1",
+  "labels": [
+    "positive",
+    "neutral",
+    "negative"
+  ],
+  "metrics": {
+    "accuracy": 0.3333,
+    "macro_f1": 0.1667,
+    "precision_macro": 0.1111,
+    "recall_macro": 0.3333,
+    "confusion_matrix": {
+      "labels": [
+        "negative",
+        "neutral",
+        "positive"
+      ],
+      "matrix": [
+        [
+          0,
+          0,
+          1
+        ],
+        [
+          0,
+          0,
+          1
+        ],
+        [
+          0,
+          0,
+          1
+        ]
+      ]
+    },
+    "classification_report": {
+      "negative": {
+        "precision": 0.0,
+        "recall": 0.0,
+        "f1-score": 0.0,
+        "support": 1.0
+      },
+      "neutral": {
+        "precision": 0.0,
+        "recall": 0.0,
+        "f1-score": 0.0,
+        "support": 1.0
+      },
+      "positive": {
+        "precision": 0.3333333333333333,
+        "recall": 1.0,
+        "f1-score": 0.5,
+        "support": 1.0
+      },
+      "accuracy": 0.3333333333333333,
+      "macro avg": {
+        "precision": 0.1111111111111111,
+        "recall": 0.3333333333333333,
+        "f1-score": 0.16666666666666666,
+        "support": 3.0
+      },
+      "weighted avg": {
+        "precision": 0.1111111111111111,
+        "recall": 0.3333333333333333,
+        "f1-score": 0.16666666666666666,
+        "support": 3.0
+      }
+    },
+    "trained_at": "2026-11-16T07:29:37Z",
+    "training_samples": 9,
+    "test_samples": 3,
+    "training_labels": {
+      "positive": 6,
+      "neutral": 3,
+      "negative": 3
+    },
+    "notes": "Metrics are computed on a held-out stratified split. This is an evaluation of the trained model, not a guarantee of real-world performance."
+  },
+  "trained_at": "2026-11-16T07:29:37Z",
+  "training_script": "ml/train.py",
+  "notes": "Metrics are computed on a held-out stratified split. This is an evaluation of the trained model, not a guarantee of real-world performance."
+}

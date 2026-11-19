@@ -1,0 +1,13 @@
+.git
+node_modules
+dist
+build
+.env
+**/.env
+**/node_modules
+**/dist
+**/.venv
+**/dist
+__pycache__
+*.pyc
+*.log
