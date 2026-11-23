@@ -14,6 +14,8 @@
 ## 3. Authorisation
 
 - Backend role dependencies enforce `admin`, `faculty`, `student` per endpoint.
+- There is no public administrator registration. The first administrator is created once through the initial setup; later administrators are created by an authenticated administrator.
+- Only administrators can approve, reject or deactivate faculty accounts.
 - Faculty data scope is derived from the JWT subject; request input cannot widen scope.
 - Students can only access their own feedback records.
 - Faculty can only view their own aggregated feedback.

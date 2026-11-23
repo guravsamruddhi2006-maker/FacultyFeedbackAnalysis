@@ -15,12 +15,13 @@ All calculations are derived from aggregated database answers and anonymised com
 ### Default engine — `lexicon-v1` (transparent baseline)
 
 - Tokenisation with stopword removal.
+
 - Lexicon scoring with positive/negative word lists.
 - Negation handling (`not`, `no`, …) flips polarity.
 - Intensifier multipliers (`very`, `really`, …).
 - Confidence is a heuristic score, **not** a calibrated probability; limitations are always returned.
 
-### Optional trained engine — `tfidf-classifier`
+### Optional trained engine access— `tfidf-classifier`
 
 - Pipeline: `TfidfVectorizer` + `LogisticRegression`.
 - Training entry point: `python ml/train.py --data <labelled.csv>`.
@@ -46,7 +47,7 @@ Keyword buckets:
 - Syllabus completion
 - Teaching pace
 - Assessment and feedback
-- Support and accessibility
+- Support and ibility
 
 Each comment is matched against token sets; results include mention counts and sentiment split.
 

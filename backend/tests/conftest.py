@@ -34,8 +34,8 @@ TEST_PASSWORD_HASH = hash_password(TEST_PASSWORD)
 
 TRUNCATE_ORDER = (
     "audit_logs, feedback_answer, feedback, feedback_periods, feedback_questions, "
-    "course_offerings, students, faculty, admins, subjects, academic_years, "
-    "semesters, departments"
+    "course_offerings, faculty_subject_selections, subject_requests, students, faculty, "
+    "admins, subjects, academic_years, semesters, departments"
 )
 
 
@@ -174,6 +174,7 @@ def data(db: psycopg.Connection) -> dict[str, Any]:
             admin_id = cur.fetchone()["admin_id"]
 
             offerings: dict[str, int] = {}
+            selections: dict[str, int] = {}
             for key, subject, faculty_key in (
                 ("a", "CS501", "a"),
                 ("b", "CS502", "b"),
@@ -187,6 +188,15 @@ def data(db: psycopg.Connection) -> dict[str, Any]:
                     ("2026-27", 5, subject, faculty[faculty_key]),
                 )
                 offerings[key] = cur.fetchone()["offering_id"]
+                cur.execute(
+                    """
+                    INSERT INTO faculty_subject_selections
+                        (faculty_id, subject_code, academic_year, semester_number, is_active)
+                    VALUES (%s, %s, %s, %s, TRUE) RETURNING selection_id
+                    """,
+                    (faculty[faculty_key], subject, "2026-27", 5),
+                )
+                selections[key] = cur.fetchone()["selection_id"]
 
             cur.execute(
                 """
@@ -208,6 +218,7 @@ def data(db: psycopg.Connection) -> dict[str, Any]:
         "question_ids": question_ids,
         "faculty": faculty,
         "offerings": offerings,
+        "selections": selections,
         "admin_id": admin_id,
         "student_id": "4UB26CS001",
         "second_student_id": "4UB26CS002",

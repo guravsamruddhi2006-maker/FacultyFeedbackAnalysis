@@ -42,6 +42,8 @@ class Settings:
     login_rate_window_seconds: int = field(
         default_factory=lambda: int(os.getenv("LOGIN_RATE_WINDOW_SECONDS", "300"))
     )
+    db_connect_timeout: int = field(default_factory=lambda: int(os.getenv("DB_CONNECT_TIMEOUT", "10")))
+    db_connect_retries: int = field(default_factory=lambda: int(os.getenv("DB_CONNECT_RETRIES", "2")))
     max_page_size: int = 100
 
     def validate(self) -> None:

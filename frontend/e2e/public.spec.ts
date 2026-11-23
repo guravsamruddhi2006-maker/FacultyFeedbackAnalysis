@@ -1,14 +1,14 @@
 import { expect, test } from "@playwright/test";
 
-test.describe("Public pages", () => {
-  test("landing page renders headline and call to action", async ({ page }) => {
+test.describe("Public entry", () => {
+  test("the site opens directly on the sign-in page", async ({ page }) => {
     await page.goto("/");
-    await expect(page.getByText(/Turning student feedback into better teaching/i)).toBeVisible();
-    await expect(page.getByRole("heading", { level: 1 })).toHaveText(/Turning student feedback into better teaching/i);
+    await expect(page).toHaveURL(/\/login/);
+    await expect(page.getByRole("heading", { name: "Sign in" })).toBeVisible();
   });
 
-  test("about page renders mission content", async ({ page }) => {
+  test("no marketing landing or about page is served", async ({ page }) => {
     await page.goto("/about");
-    await expect(page.getByText(/About FacultyInsight AI/i)).toBeVisible();
+    await expect(page.getByRole("heading", { name: "Page not found" })).toBeVisible();
   });
 });

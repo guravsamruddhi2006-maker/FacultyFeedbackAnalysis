@@ -15,7 +15,6 @@ from app.schemas.admin import (
     FeedbackPeriodUpsert,
     FeedbackQuestionCreate,
     FeedbackQuestionUpdate,
-    OfferingCreate,
     SubjectCreate,
     SubjectUpdate,
 )
@@ -24,6 +23,18 @@ from app.services.audit import write_audit
 
 
 router = APIRouter(prefix="/catalog", tags=["Catalog"])
+
+# Fixed reference data that a fresh deployment needs before any course can be
+# configured. Seeding is idempotent and never removes or overwrites user data.
+BASE_DEPARTMENTS = (("Computer Science and Engineering", "CSE"),)
+BASE_ACADEMIC_YEARS = ("2025-26", "2026-27", "2027-28", "2028-29")
+BASE_QUESTIONS = (
+    "Explains concepts clearly.",
+    "Has good subject knowledge.",
+    "Encourages student participation.",
+    "Uses practical examples.",
+    "Completes the syllabus.",
+)
 
 
 @router.get("/public/departments")
@@ -277,6 +288,12 @@ def list_course_offerings(
     _: Principal = Depends(authenticated),
     conn: Connection = Depends(get_db),
 ):
+    """Read-only list of the offerings created by active faculty selections.
+
+    Administrators manage the catalog and review subject requests. They do not
+    create or delete faculty offerings; those follow the faculty member's own
+    selection.
+    """
     clauses = ["TRUE"]
     params: list = []
     if academic_year:
@@ -318,81 +335,6 @@ def list_course_offerings(
         )
         items = list(cur.fetchall())
     return {"items": items, "total": total, "page": page, "page_size": page_size}
-
-
-@router.post("/course-offerings", status_code=status.HTTP_201_CREATED)
-def create_course_offering(
-    payload: OfferingCreate,
-    request: Request,
-    current_user: Principal = Depends(admin_required),
-    conn: Connection = Depends(get_db),
-):
-    try:
-        with conn.transaction():
-            with conn.cursor() as cur:
-                cur.execute(
-                    "SELECT subject_name, semester_number FROM subjects WHERE subject_code = %s",
-                    (payload.subject_code,),
-                )
-                subject = cur.fetchone()
-                if subject is None:
-                    raise HTTPException(status_code=404, detail="Subject not found.")
-                if subject["semester_number"] != payload.semester_number:
-                    raise HTTPException(
-                        status_code=400,
-                        detail=f"{payload.subject_code} belongs to semester {subject['semester_number']}.",
-                    )
-                cur.execute(
-                    "SELECT name, status FROM faculty WHERE faculty_id = %s",
-                    (payload.faculty_id,),
-                )
-                faculty = cur.fetchone()
-                if faculty is None:
-                    raise HTTPException(status_code=404, detail="Faculty not found.")
-                if faculty["status"] != "approved":
-                    raise HTTPException(status_code=400, detail="Assign only approved faculty members.")
-                cur.execute(
-                    """
-                    INSERT INTO course_offerings (academic_year, semester_number, subject_code, faculty_id)
-                    VALUES (%s, %s, %s, %s)
-                    RETURNING offering_id, academic_year, semester_number, subject_code, faculty_id
-                    """,
-                    (payload.academic_year, payload.semester_number, payload.subject_code, payload.faculty_id),
-                )
-                row = cur.fetchone()
-                row["faculty_name"] = faculty["name"]
-                row["subject_name"] = subject["subject_name"]
-            write_audit(conn, current_user, "course_offering.create", entity_type="course_offering", entity_id=row["offering_id"], details=row, request=request)
-            return row
-    except UniqueViolation as exc:
-        raise HTTPException(
-            status_code=409,
-            detail="This faculty member already has an offering for this subject, year and semester.",
-        ) from exc
-    except ForeignKeyViolation as exc:
-        raise HTTPException(status_code=400, detail="Academic year, semester or faculty is invalid.") from exc
-
-
-@router.delete("/course-offerings/{offering_id}", response_model=MessageResponse)
-def delete_course_offering(
-    offering_id: int,
-    request: Request,
-    current_user: Principal = Depends(admin_required),
-    conn: Connection = Depends(get_db),
-):
-    with conn.transaction():
-        with conn.cursor() as cur:
-            cur.execute("SELECT COUNT(*)::int AS count FROM feedback WHERE offering_id = %s", (offering_id,))
-            if cur.fetchone()["count"] > 0:
-                raise HTTPException(
-                    status_code=409,
-                    detail="This offering has feedback and cannot be deleted. Preserve historical records.",
-                )
-            cur.execute("DELETE FROM course_offerings WHERE offering_id = %s", (offering_id,))
-            if cur.rowcount == 0:
-                raise HTTPException(status_code=404, detail="Course offering not found.")
-        write_audit(conn, current_user, "course_offering.delete", entity_type="course_offering", entity_id=offering_id, request=request)
-    return MessageResponse(message="Course offering deleted.")
 
 
 @router.get("/feedback-questions")
@@ -534,3 +476,57 @@ def delete_feedback_period(
                 raise HTTPException(status_code=404, detail="Feedback period not found.")
         write_audit(conn, current_user, "feedback_period.delete", entity_type="feedback_period", entity_id=f"{academic_year}:{semester_number}", request=request)
     return MessageResponse(message="Feedback period deleted.")
+
+
+@router.post("/bootstrap")
+def bootstrap_base_catalog(
+    request: Request,
+    current_user: Principal = Depends(admin_required),
+    conn: Connection = Depends(get_db),
+):
+    """Ensure the fixed reference catalog exists on a fresh deployment.
+
+    Semesters are fixed academic reference data and cannot be created through
+    the normal management forms, so this admin-only, idempotent operation
+    inserts them along with the verified CSE department, base academic years
+    and the default feedback questions. It never deletes or overwrites data.
+    """
+    created = {"semesters": 0, "departments": 0, "academic_years": 0, "questions": 0}
+    with conn.transaction():
+        with conn.cursor() as cur:
+            for number in range(1, 9):
+                cur.execute(
+                    "INSERT INTO semesters (semester_number) VALUES (%s) ON CONFLICT DO NOTHING",
+                    (number,),
+                )
+                created["semesters"] += cur.rowcount
+            for name, code in BASE_DEPARTMENTS:
+                cur.execute(
+                    "INSERT INTO departments (name, code) VALUES (%s, %s) ON CONFLICT DO NOTHING",
+                    (name, code),
+                )
+                created["departments"] += cur.rowcount
+            for year in BASE_ACADEMIC_YEARS:
+                cur.execute(
+                    "INSERT INTO academic_years (academic_year) VALUES (%s) ON CONFLICT DO NOTHING",
+                    (year,),
+                )
+                created["academic_years"] += cur.rowcount
+            cur.execute("SELECT COUNT(*)::int AS count FROM feedback_questions")
+            if cur.fetchone()["count"] == 0:
+                for question in BASE_QUESTIONS:
+                    cur.execute(
+                        "INSERT INTO feedback_questions (question_text) VALUES (%s)",
+                        (question,),
+                    )
+                    created["questions"] += 1
+        write_audit(
+            conn,
+            current_user,
+            "catalog.bootstrap",
+            entity_type="catalog",
+            entity_id="base",
+            details=created,
+            request=request,
+        )
+    return {"message": "Base catalog is ready.", "created": created}

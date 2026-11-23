@@ -27,7 +27,8 @@ import {
   Th,
 } from "@/components/ui";
 import { useApi } from "@/hooks/useApi";
-import { downloadReport } from "@/lib/api";
+import { useToast } from "@/context/ToastContext";
+import { ApiError, downloadReport } from "@/lib/api";
 
 interface AdminAnalytics {
   counts: {
@@ -73,6 +74,8 @@ export function AdminDashboard() {
     return value ? `?${value}` : "";
   }, [filters]);
   const { data, loading, error } = useApi<AdminAnalytics>(`/analytics/admin${query}`);
+  const { notify } = useToast();
+  const [exporting, setExporting] = useState<"csv" | "pdf" | null>(null);
 
   const exportReport = async (format: "csv" | "pdf") => {
     const params = new URLSearchParams();
@@ -80,11 +83,19 @@ export function AdminDashboard() {
     if (filters.semester) params.set("semester_number", filters.semester);
     if (filters.subject) params.set("subject_code", filters.subject);
     const queryStringValue = params.toString();
-    await downloadReport(
-      `/reports/admin${queryStringValue ? `?${queryStringValue}` : ""}&format=${format}`,
-      format,
-      `department-analytics.${format}`,
-    );
+    setExporting(format);
+    try {
+      await downloadReport(
+        `/reports/admin${queryStringValue ? `?${queryStringValue}` : ""}`,
+        format,
+        `department-analytics.${format}`,
+      );
+      notify(`Department report exported as ${format.toUpperCase()}.`, "success");
+    } catch (err) {
+      notify(err instanceof ApiError ? err.message : "The report could not be exported.", "error");
+    } finally {
+      setExporting(null);
+    }
   };
 
   if (loading && !data) return <LoadingBlock label="Loading department analytics…" />;
@@ -96,10 +107,10 @@ export function AdminDashboard() {
         description="Department-wide feedback coverage and performance, shown only as aggregate data."
         actions={
           <div className="flex gap-2">
-            <Button size="sm" variant="outline" onClick={() => void exportReport("csv")}>
+            <Button size="sm" variant="outline" loading={exporting === "csv"} onClick={() => void exportReport("csv")}>
               Export CSV
             </Button>
-            <Button size="sm" variant="outline" onClick={() => void exportReport("pdf")}>
+            <Button size="sm" variant="outline" loading={exporting === "pdf"} onClick={() => void exportReport("pdf")}>
               Export PDF
             </Button>
           </div>

@@ -100,3 +100,7 @@ class TokenResponse(BaseModel):
     token_type: str = "bearer"
     expires_at: str
     user: AuthUser
+
+
+class SetupStatus(BaseModel):
+    completed: bool

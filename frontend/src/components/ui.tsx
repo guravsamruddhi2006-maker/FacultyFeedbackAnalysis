@@ -362,6 +362,7 @@
 
 import {
   forwardRef,
+  useState,
   type ButtonHTMLAttributes,
   type HTMLAttributes,
   type InputHTMLAttributes,
@@ -371,7 +372,7 @@ import {
   type TextareaHTMLAttributes,
 } from "react";
 
-import { AlertCircle, Inbox, Loader2, X } from "lucide-react";
+import { AlertCircle, Eye, EyeOff, Inbox, Loader2, X } from "lucide-react";
 
 import { cn } from "@/lib/utils";
 
@@ -467,6 +468,47 @@ export const Input = forwardRef<HTMLInputElement, InputHTMLAttributes<HTMLInputE
 );
 
 Input.displayName = "Input";
+
+/**
+ * Password field with an in-field show/hide control.
+ *
+ * The toggle only changes the input type; it never touches the value, so
+ * validation, react-hook-form registration and form submission keep working.
+ * Each instance owns its own visibility state, so fields toggle independently.
+ */
+export const PasswordInput = forwardRef<HTMLInputElement, InputHTMLAttributes<HTMLInputElement>>(
+  ({ className, disabled, ...props }, ref) => {
+    const [visible, setVisible] = useState(false);
+
+    return (
+      <div className="relative">
+        <Input
+          ref={ref}
+          {...props}
+          disabled={disabled}
+          type={visible ? "text" : "password"}
+          className={cn("pr-10", className)}
+        />
+        <button
+          type="button"
+          onClick={() => setVisible((value) => !value)}
+          disabled={disabled}
+          aria-label={visible ? "Hide password" : "Show password"}
+          aria-pressed={visible}
+          className="absolute inset-y-0 right-0 flex w-10 items-center justify-center rounded-r-md text-slate-400 transition hover:text-slate-600 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring disabled:pointer-events-none disabled:opacity-60"
+        >
+          {visible ? (
+            <EyeOff className="h-4 w-4" aria-hidden="true" />
+          ) : (
+            <Eye className="h-4 w-4" aria-hidden="true" />
+          )}
+        </button>
+      </div>
+    );
+  },
+);
+
+PasswordInput.displayName = "PasswordInput";
 
 export const Textarea = forwardRef<HTMLTextAreaElement, TextareaHTMLAttributes<HTMLTextAreaElement>>(
   ({ className, ...props }, ref) => (

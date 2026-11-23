@@ -63,6 +63,39 @@ CREATE TABLE IF NOT EXISTS course_offerings (
     CONSTRAINT course_offerings_unique_assignment UNIQUE (academic_year, semester_number, subject_code, faculty_id)
 );
 
+-- Faculty choose their own teaching subjects. An administrator never assigns a
+-- faculty member here, and the catalog stays independent of this relationship.
+CREATE TABLE IF NOT EXISTS faculty_subject_selections (
+    selection_id    SERIAL PRIMARY KEY,
+    faculty_id      INTEGER NOT NULL REFERENCES faculty(faculty_id) ON UPDATE CASCADE ON DELETE CASCADE,
+    subject_code    VARCHAR(20) NOT NULL REFERENCES subjects(subject_code) ON UPDATE CASCADE ON DELETE RESTRICT,
+    academic_year   VARCHAR(9) NOT NULL REFERENCES academic_years(academic_year) ON UPDATE CASCADE ON DELETE RESTRICT,
+    semester_number INTEGER NOT NULL REFERENCES semesters(semester_number) ON UPDATE CASCADE ON DELETE RESTRICT,
+    is_active       BOOLEAN NOT NULL DEFAULT TRUE,
+    origin          VARCHAR(20) NOT NULL DEFAULT 'faculty',
+    created_at      TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at      TIMESTAMPTZ,
+    CONSTRAINT faculty_subject_selections_unique UNIQUE (faculty_id, subject_code, academic_year, semester_number)
+);
+
+-- Faculty may request a subject that is missing from the official catalog.
+-- A request only becomes a catalog subject after administrator approval.
+CREATE TABLE IF NOT EXISTS subject_requests (
+    request_id      SERIAL PRIMARY KEY,
+    faculty_id      INTEGER NOT NULL REFERENCES faculty(faculty_id) ON UPDATE CASCADE ON DELETE CASCADE,
+    subject_code    VARCHAR(20) NOT NULL,
+    subject_name    VARCHAR(180) NOT NULL,
+    semester_number INTEGER NOT NULL REFERENCES semesters(semester_number) ON UPDATE CASCADE ON DELETE RESTRICT,
+    status          VARCHAR(20) NOT NULL DEFAULT 'pending',
+    admin_note      VARCHAR(500),
+    reviewed_by     INTEGER REFERENCES admins(admin_id) ON UPDATE CASCADE ON DELETE SET NULL,
+    reviewed_at     TIMESTAMPTZ,
+    created_at      TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    CONSTRAINT subject_requests_status_check CHECK (status IN ('pending', 'approved', 'rejected')),
+    CONSTRAINT subject_requests_code_format_check CHECK (length(trim(subject_code)) >= 2),
+    CONSTRAINT subject_requests_name_check CHECK (length(trim(subject_name)) >= 3)
+);
+
 CREATE TABLE IF NOT EXISTS feedback_questions (
     question_id     SERIAL PRIMARY KEY,
     question_text   VARCHAR(500) NOT NULL,
@@ -114,6 +147,12 @@ CREATE TABLE IF NOT EXISTS audit_logs (
 CREATE INDEX IF NOT EXISTS idx_faculty_status ON faculty(status);
 CREATE INDEX IF NOT EXISTS idx_course_offerings_faculty ON course_offerings(faculty_id);
 CREATE INDEX IF NOT EXISTS idx_course_offerings_scope ON course_offerings(academic_year, semester_number, subject_code);
+CREATE INDEX IF NOT EXISTS idx_faculty_selections_faculty ON faculty_subject_selections(faculty_id, is_active);
+CREATE INDEX IF NOT EXISTS idx_faculty_selections_scope ON faculty_subject_selections(academic_year, semester_number, subject_code, is_active);
+CREATE UNIQUE INDEX IF NOT EXISTS idx_subject_requests_pending_code
+    ON subject_requests(subject_code) WHERE status = 'pending';
+CREATE INDEX IF NOT EXISTS idx_subject_requests_faculty ON subject_requests(faculty_id, created_at DESC);
+CREATE INDEX IF NOT EXISTS idx_subject_requests_status ON subject_requests(status, created_at DESC);
 CREATE INDEX IF NOT EXISTS idx_feedback_offering ON feedback(offering_id);
 CREATE INDEX IF NOT EXISTS idx_feedback_student ON feedback(student_id);
 CREATE INDEX IF NOT EXISTS idx_feedback_answers_question ON feedback_answer(question_id);

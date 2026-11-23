@@ -57,7 +57,7 @@ export function FacultyProfilePage() {
     <div className="space-y-6">
       <PageHeader
         title={data.name}
-        description="Your faculty profile, assignments and privacy boundary."
+        description="Your faculty profile, subject selections and privacy boundary."
         actions={
           <Link to="/faculty">
             <Button variant="outline">
@@ -77,13 +77,13 @@ export function FacultyProfilePage() {
       <div className="grid gap-4 sm:grid-cols-3">
         <Card>
           <CardContent className="p-5">
-            <p className="text-xs font-medium uppercase tracking-wide text-slate-500">Assigned offerings</p>
+            <p className="text-xs font-medium uppercase tracking-wide text-slate-500">Selected subjects</p>
             <p className="mt-2 text-2xl font-semibold text-slate-900">{data.summary.offering_count}</p>
           </CardContent>
         </Card>
         <Card>
           <CardContent className="p-5">
-            <p className="text-xs font-medium uppercase tracking-wide text-slate-500">Assigned subjects</p>
+            <p className="text-xs font-medium uppercase tracking-wide text-slate-500">Subject offerings</p>
             <p className="mt-2 text-2xl font-semibold text-slate-900">{data.summary.subject_count}</p>
           </CardContent>
         </Card>
@@ -99,7 +99,7 @@ export function FacultyProfilePage() {
 
       <Card>
         <CardHeader>
-          <CardTitle>Assigned subjects and semesters</CardTitle>
+          <CardTitle>My subjects and semesters</CardTitle>
         </CardHeader>
         <CardContent>
           {data.offerings.length ? (
@@ -120,11 +120,11 @@ export function FacultyProfilePage() {
               ))}
             </div>
           ) : (
-            <EmptyState title="No assigned offerings" description="Your teaching assignments will appear here." />
+            <EmptyState title="No subjects selected" description="Choose the subjects you teach from the My subjects page." />
           )}
           {data.offerings.length ? (
             <p className="mt-4 flex items-center gap-2 text-xs text-slate-500">
-              <BookOpen className="h-4 w-4" /> Assignments are scoped to your faculty account only.
+              <BookOpen className="h-4 w-4" /> Selections are scoped to your faculty account only.
             </p>
           ) : null}
         </CardContent>

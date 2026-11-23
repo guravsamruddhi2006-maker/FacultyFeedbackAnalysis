@@ -30,6 +30,38 @@ export interface Subject {
   semester_number: number;
 }
 
+export interface FacultySelection {
+  selection_id: number;
+  faculty_id: number;
+  subject_code: string;
+  subject_name: string;
+  academic_year: string;
+  semester_number: number;
+  is_active: boolean;
+  offering_id: number | null;
+  response_count: number;
+  period_open: boolean;
+  created_at?: string;
+  updated_at?: string | null;
+}
+
+export interface SubjectRequest {
+  request_id: number;
+  faculty_id: number;
+  faculty_name?: string;
+  faculty_email?: string;
+  subject_code: string;
+  subject_name: string;
+  semester_number: number;
+  status: "pending" | "approved" | "rejected";
+  admin_note?: string | null;
+  reviewed_by?: number | null;
+  reviewed_by_name?: string | null;
+  reviewed_at?: string | null;
+  created_at: string;
+  in_catalog?: boolean;
+}
+
 export interface FacultyMember {
   faculty_id: number;
   name: string;

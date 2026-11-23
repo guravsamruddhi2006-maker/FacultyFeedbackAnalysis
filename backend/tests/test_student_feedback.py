@@ -17,6 +17,41 @@ def test_dashboard_defaults_to_an_open_period(client: TestClient, data: dict, st
     assert body["summary"]["closed"] == 0
 
 
+def test_dashboard_lists_all_academic_years_and_semesters(
+    client: TestClient, data: dict, student_headers: dict
+) -> None:
+    body = client.get("/api/students/me/dashboard", headers=student_headers).json()
+    assert body["filter_options"]["academic_years"] == ["2027-28", "2026-27"]
+    assert body["filter_options"]["semesters"] == list(range(1, 9))
+
+    empty = client.get(
+        "/api/students/me/dashboard",
+        headers=student_headers,
+        params={"academic_year": "2027-28", "semester_number": 8},
+    ).json()
+    assert empty["selected"] == {"academic_year": "2027-28", "semester_number": 8}
+    assert empty["offerings"] == []
+    assert empty["summary"]["total"] == 0
+
+
+def test_every_year_and_semester_combination_is_selectable(
+    client: TestClient, data: dict, student_headers: dict
+) -> None:
+    for year in ("2026-27", "2027-28"):
+        for semester in range(1, 9):
+            body = client.get(
+                "/api/students/me/dashboard",
+                headers=student_headers,
+                params={"academic_year": year, "semester_number": semester},
+            ).json()
+            assert body["selected"] == {"academic_year": year, "semester_number": semester}
+            assert body["filter_options"]["semesters"] == list(range(1, 9))
+            for offering in body["offerings"]:
+                assert offering["academic_year"] == year
+                assert offering["semester_number"] == semester
+                assert offering["faculty_name"]
+
+
 def test_feedback_form_lists_active_questions(
     client: TestClient, data: dict, student_headers: dict
 ) -> None:
@@ -125,6 +160,14 @@ def test_closed_period_blocks_submission_and_editing(
                 ("2027-28", 5, "CS501", data["faculty"]["a"]),
             )
             closed_offering = cur.fetchone()["offering_id"]
+            cur.execute(
+                """
+                INSERT INTO faculty_subject_selections
+                    (faculty_id, subject_code, academic_year, semester_number, is_active)
+                VALUES (%s, %s, %s, %s, TRUE)
+                """,
+                (data["faculty"]["a"], "CS501", "2027-28", 5),
+            )
 
     response = client.post(
         "/api/students/me/feedback",

@@ -86,7 +86,7 @@ export function StudentDashboard() {
                 <Select
                   id="year"
                   value={selectedYear}
-                  onChange={(event) => setFilters({ year: event.target.value })}
+                  onChange={(event) => setFilters({ ...filters, year: event.target.value })}
                 >
                   {(data?.filter_options.academic_years ?? []).map((year) => (
                     <option key={year} value={year}>
@@ -131,15 +131,17 @@ export function StudentDashboard() {
 
       <Card>
         <div className="border-b px-5 py-4">
-          <h2 className="font-semibold text-slate-900">Course offerings</h2>
-          <p className="text-sm text-slate-500">Each subject–faculty pair is evaluated separately.</p>
+          <h2 className="font-semibold text-slate-900">Subjects and faculty</h2>
+          <p className="text-sm text-slate-500">
+            Only subjects with an active faculty selection for this year and semester are shown.
+          </p>
         </div>
         {loading ? (
           <LoadingBlock />
         ) : !data?.offerings.length ? (
           <EmptyState
-            title="No offerings for this selection"
-            description="Your department has not published courses for the chosen year and semester yet."
+            title="No subjects available for this semester yet."
+            description="Subjects appear here only after an approved faculty member selects them for this academic year and semester."
             icon={<ClipboardList className="h-6 w-6" />}
           />
         ) : (

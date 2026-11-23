@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import time
 from contextlib import contextmanager
 from typing import Any, Iterator
 
@@ -10,8 +11,29 @@ from app.core.config import settings
 
 
 def connect() -> psycopg.Connection:
-    """Create a fresh PostgreSQL connection with dict rows."""
-    return psycopg.connect(**settings.db_conninfo, row_factory=dict_row)
+    """Create a fresh PostgreSQL connection with dict rows.
+
+    Managed PostgreSQL providers such as Neon suspend idle compute and can
+    briefly refuse or stall a new connection while it wakes up. Retrying a
+    couple of times with a short backoff prevents a cold start from surfacing
+    as a false "database unavailable" error. If every attempt fails, the real
+    ``OperationalError`` is raised so the API still reports the outage.
+    """
+    attempts = max(1, settings.db_connect_retries + 1)
+    last_error: psycopg.OperationalError | None = None
+    for attempt in range(attempts):
+        try:
+            return psycopg.connect(
+                **settings.db_conninfo,
+                row_factory=dict_row,
+                connect_timeout=settings.db_connect_timeout,
+            )
+        except psycopg.OperationalError as exc:
+            last_error = exc
+            if attempt + 1 < attempts:
+                time.sleep(0.4 * (2**attempt))
+    assert last_error is not None
+    raise last_error
 
 
 def get_db() -> Iterator[psycopg.Connection]:
@@ -23,6 +45,12 @@ def get_db() -> Iterator[psycopg.Connection]:
     connection closed. Committing here makes every successful request durable
     and rolls back cleanly when the endpoint raises.
     """
+    # Apply the additive self-selection schema once per process before serving
+    # the first database-backed request. Imported lazily to avoid a cycle.
+    from app.schema import ensure_runtime_schema
+
+    ensure_runtime_schema()
+
     conn = connect()
     try:
         yield conn

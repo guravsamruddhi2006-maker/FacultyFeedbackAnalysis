@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import logging
 import time
+from pathlib import Path
 from uuid import uuid4
 
 import psycopg
@@ -80,8 +81,11 @@ async def validation_handler(request: Request, exc: RequestValidationError):
 
 @app.exception_handler(psycopg.OperationalError)
 async def database_unavailable_handler(request: Request, exc: psycopg.OperationalError):
-    logger.exception("Database unavailable")
-    return JSONResponse(status_code=503, content={"detail": "The database is temporarily unavailable."})
+    logger.exception("Database unavailable on %s", request.url.path)
+    return JSONResponse(
+        status_code=503,
+        content={"detail": "The database is temporarily unavailable. Please try again in a moment."},
+    )
 
 
 @app.exception_handler(Exception)
@@ -90,14 +94,20 @@ async def safe_error_handler(request: Request, exc: Exception):
     return JSONResponse(status_code=500, content={"detail": "An unexpected error occurred. Please try again."})
 
 
-@app.get("/", tags=["Health"])
-def root():
-    return {
-        "name": settings.app_name,
-        "tagline": "Turning Student Feedback into Better Teaching.",
-        "version": __version__,
-        "docs": "/docs",
-    }
+frontend_dist_dir = Path(__file__).resolve().parents[2] / "frontend" / "dist"
+
+if frontend_dist_dir.is_dir():
+    # Production frontend build present (e.g., Vercel deployment): serve the SPA.
+    app.frontend("/", directory=str(frontend_dist_dir), fallback="auto", check_dir=False)
+else:
+
+    @app.get("/", tags=["Health"])
+    def root():
+        return {
+            "name": settings.app_name,
+            "version": __version__,
+            "docs": "/docs",
+        }
 
 
 @app.get("/health", tags=["Health"])

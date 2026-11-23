@@ -18,6 +18,19 @@ from app.schemas.feedback import FeedbackSubmit, FeedbackUpdate, RatingInput
 router = APIRouter(prefix="/students/me", tags=["Student"])
 
 
+# A student may only see an offering when the faculty member has an active
+# selection for exactly that subject, academic year and semester and the faculty
+# account is approved. This fragment is reused by every student-facing query.
+ACTIVE_SELECTION_JOIN = """
+    JOIN faculty_subject_selections fss
+      ON fss.faculty_id = co.faculty_id
+     AND fss.subject_code = co.subject_code
+     AND fss.academic_year = co.academic_year
+     AND fss.semester_number = co.semester_number
+     AND fss.is_active = TRUE
+"""
+
+
 def _comment(comment: str) -> str:
     cleaned = comment.strip()
     if len(cleaned) < 10 or len(cleaned) > 1000:
@@ -28,14 +41,15 @@ def _comment(comment: str) -> str:
 def _offering_and_period(conn: Connection, offering_id: int, *, allow_closed: bool = False) -> dict:
     with conn.cursor() as cur:
         cur.execute(
-            """
+            f"""
             SELECT co.offering_id, co.academic_year, co.semester_number, co.subject_code,
                    co.faculty_id, s.subject_name, f.name AS faculty_name,
                    fp.start_date, fp.end_date,
                    (fp.academic_year IS NOT NULL AND CURRENT_TIMESTAMP BETWEEN fp.start_date AND fp.end_date) AS period_open
             FROM course_offerings co
+            {ACTIVE_SELECTION_JOIN}
             JOIN subjects s ON s.subject_code = co.subject_code
-            JOIN faculty f ON f.faculty_id = co.faculty_id
+            JOIN faculty f ON f.faculty_id = co.faculty_id AND f.status = 'approved'
             LEFT JOIN feedback_periods fp
               ON fp.academic_year = co.academic_year AND fp.semester_number = co.semester_number
             WHERE co.offering_id = %s
@@ -147,31 +161,48 @@ def student_dashboard(
     conn: Connection = Depends(get_db),
 ):
     with conn.cursor() as cur:
-        cur.execute(
-            "SELECT DISTINCT academic_year FROM course_offerings ORDER BY academic_year DESC"
-        )
+        # Dropdown options are fixed reference data, never derived from
+        # offerings or faculty selections. Both academic years and all eight
+        # semesters stay selectable even when they contain no offerings.
+        cur.execute("SELECT academic_year FROM academic_years ORDER BY academic_year DESC")
         years = [row["academic_year"] for row in cur.fetchall()]
+        cur.execute("SELECT semester_number FROM semesters ORDER BY semester_number")
+        semesters = [row["semester_number"] for row in cur.fetchall()]
         # Default to a year that currently has an open feedback period so that
         # students land on actionable offerings instead of a closed year.
         cur.execute(
-            """
-            SELECT DISTINCT academic_year FROM feedback_periods
-            WHERE CURRENT_TIMESTAMP BETWEEN start_date AND end_date
-            ORDER BY academic_year DESC
+            f"""
+            SELECT DISTINCT fp.academic_year
+            FROM feedback_periods fp
+            WHERE CURRENT_TIMESTAMP BETWEEN fp.start_date AND fp.end_date
+              AND EXISTS (
+                  SELECT 1 FROM course_offerings co
+                  {ACTIVE_SELECTION_JOIN}
+                  JOIN faculty f ON f.faculty_id = co.faculty_id AND f.status = 'approved'
+                  WHERE co.academic_year = fp.academic_year
+              )
+            ORDER BY fp.academic_year DESC
             """
         )
         open_years = [row["academic_year"] for row in cur.fetchall()]
-        selected_year = academic_year or (open_years[0] if open_years else (years[0] if years else None))
         cur.execute(
-            """
-            SELECT DISTINCT co.semester_number
+            f"""
+            SELECT DISTINCT co.academic_year
             FROM course_offerings co
-            WHERE co.academic_year = %s
-            ORDER BY co.semester_number
-            """,
-            (selected_year,),
+            {ACTIVE_SELECTION_JOIN}
+            JOIN faculty f ON f.faculty_id = co.faculty_id AND f.status = 'approved'
+            ORDER BY co.academic_year DESC
+            """
         )
-        semesters = [row["semester_number"] for row in cur.fetchall()]
+        offering_years = [row["academic_year"] for row in cur.fetchall()]
+        if academic_year:
+            selected_year = academic_year
+        elif open_years:
+            selected_year = open_years[0]
+        elif offering_years:
+            selected_year = offering_years[0]
+        else:
+            selected_year = years[0] if years else None
         if semester_number:
             selected_semester = semester_number
         else:
@@ -201,15 +232,16 @@ def student_dashboard(
         offerings: list[dict] = []
         if selected_year and selected_semester:
             cur.execute(
-                """
+                f"""
                 SELECT co.offering_id, co.academic_year, co.semester_number, co.subject_code,
                        s.subject_name, co.faculty_id, f.name AS faculty_name,
                        fp.start_date, fp.end_date,
                        COALESCE(fp.academic_year IS NOT NULL AND CURRENT_TIMESTAMP BETWEEN fp.start_date AND fp.end_date, FALSE) AS period_open,
                        fb.feedback_id, fb.submitted_at
                 FROM course_offerings co
+                {ACTIVE_SELECTION_JOIN}
                 JOIN subjects s ON s.subject_code = co.subject_code
-                JOIN faculty f ON f.faculty_id = co.faculty_id
+                JOIN faculty f ON f.faculty_id = co.faculty_id AND f.status = 'approved'
                 LEFT JOIN feedback_periods fp
                   ON fp.academic_year = co.academic_year AND fp.semester_number = co.semester_number
                 LEFT JOIN feedback fb

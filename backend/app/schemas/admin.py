@@ -47,16 +47,17 @@ class SubjectUpdate(SubjectCreate):
     pass
 
 
-class OfferingCreate(BaseModel):
-    academic_year: str = Field(pattern=r"^[0-9]{4}-[0-9]{2}$")
-    semester_number: int = Field(ge=1, le=8)
-    subject_code: str = Field(min_length=2, max_length=20)
-    faculty_id: int = Field(gt=0)
+class SubjectRequestReview(BaseModel):
+    status: Literal["approved", "rejected"]
+    admin_note: str | None = Field(default=None, max_length=500)
 
-    @field_validator("subject_code")
+    @field_validator("admin_note")
     @classmethod
-    def uppercase_code(cls, value: str) -> str:
-        return value.strip().upper()
+    def clean_note(cls, value: str | None) -> str | None:
+        if value is None:
+            return None
+        cleaned = value.strip()
+        return cleaned or None
 
 
 class FeedbackPeriodUpsert(BaseModel):

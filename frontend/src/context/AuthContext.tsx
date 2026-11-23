@@ -95,7 +95,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         method: "POST",
         body: payload,
       });
-      return storeSession(session);
+      const user = storeSession(session);
+      setUser(user);
+      return user;
     },
     [],
   );

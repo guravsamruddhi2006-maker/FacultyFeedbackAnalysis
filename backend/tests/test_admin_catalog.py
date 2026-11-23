@@ -7,7 +7,9 @@ from datetime import datetime, timedelta, timezone
 from fastapi.testclient import TestClient
 
 
-def test_catalog_crud_flow(client: TestClient, data: dict, admin_headers: dict) -> None:
+def test_catalog_crud_flow(
+    client: TestClient, data: dict, admin_headers: dict, faculty_a_headers: dict
+) -> None:
     department = client.post(
         "/api/catalog/departments",
         headers=admin_headers,
@@ -29,7 +31,9 @@ def test_catalog_crud_flow(client: TestClient, data: dict, admin_headers: dict) 
     assert subject.status_code == 201, subject.text
     assert subject.json()["subject_code"] == "CS601"
 
-    offering = client.post(
+    # Faculty choose their own subjects. The administrator only manages the
+    # catalog and can no longer create an offering on the faculty member's behalf.
+    assignment = client.post(
         "/api/catalog/course-offerings",
         headers=admin_headers,
         json={
@@ -39,7 +43,18 @@ def test_catalog_crud_flow(client: TestClient, data: dict, admin_headers: dict) 
             "faculty_id": data["faculty"]["a"],
         },
     )
-    assert offering.status_code == 201, offering.text
+    assert assignment.status_code == 405
+
+    selection = client.post(
+        "/api/faculty/me/selections",
+        headers=faculty_a_headers,
+        json={
+            "academic_year": "2028-29",
+            "semester_number": 6,
+            "subject_code": "CS601",
+        },
+    )
+    assert selection.status_code == 200, selection.text
 
     question = client.post(
         "/api/catalog/feedback-questions",
@@ -180,7 +195,8 @@ def test_admin_can_deactivate_another_admin_but_not_self_lockout(
         "/api/auth/admin/login",
         json={"email": "second-admin@test.local", "password": "Admin2Pass"},
     )
-    assert login.status_code == 401
+    assert login.status_code == 403
+    assert "inactive" in login.json()["detail"].lower()
 
 
 def test_admin_dashboard_counts(client: TestClient, data: dict, admin_headers: dict) -> None:
@@ -190,3 +206,26 @@ def test_admin_dashboard_counts(client: TestClient, data: dict, admin_headers: d
     assert body["counts"]["total_students"] == 2
     assert body["counts"]["total_faculty"] == 3
     assert body["counts"]["pending_faculty"] == 1
+
+
+def test_catalog_bootstrap_is_idempotent_and_admin_only(
+    client: TestClient, data: dict, admin_headers: dict, faculty_a_headers: dict
+) -> None:
+    blocked = client.post("/api/catalog/bootstrap", headers=faculty_a_headers)
+    assert blocked.status_code == 403
+
+    first = client.post("/api/catalog/bootstrap", headers=admin_headers)
+    assert first.status_code == 200, first.text
+    assert first.json()["created"]["semesters"] == 0
+    assert first.json()["created"]["departments"] == 0
+    assert first.json()["created"]["questions"] == 0
+    assert first.json()["created"]["academic_years"] == 2
+
+    second = client.post("/api/catalog/bootstrap", headers=admin_headers)
+    assert second.status_code == 200, second.text
+    assert all(value == 0 for value in second.json()["created"].values())
+
+    departments = client.get("/api/catalog/departments", headers=admin_headers).json()
+    assert [item["code"] for item in departments] == ["CSE"]
+    semesters = client.get("/api/catalog/semesters", headers=admin_headers).json()
+    assert [item["semester_number"] for item in semesters] == list(range(1, 9))

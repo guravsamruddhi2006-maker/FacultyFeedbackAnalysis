@@ -11,6 +11,7 @@ import {
   Menu,
   ScrollText,
   ShieldCheck,
+  UserCog,
   UserRound,
   Users,
   X,
@@ -20,12 +21,13 @@ import { useAuth } from "@/context/AuthContext";
 import { useToast } from "@/context/ToastContext";
 import { api, ApiError } from "@/lib/api";
 import { cn, initials } from "@/lib/utils";
-import { Button, Card, CardContent, Field, Input, Modal } from "@/components/ui";
+import { Button, Card, CardContent, Field, Modal, PasswordInput } from "@/components/ui";
 
 const navByRole = {
   student: [{ to: "/student", label: "My feedback", icon: ClipboardList }],
   faculty: [
     { to: "/faculty", label: "Teaching overview", icon: LayoutDashboard },
+    { to: "/faculty/subjects", label: "My subjects", icon: BookOpen },
     { to: "/faculty/comments", label: "Student comments", icon: ScrollText },
     { to: "/faculty/profile", label: "My profile", icon: UserRound },
   ],
@@ -35,6 +37,7 @@ const navByRole = {
     { to: "/admin/faculty", label: "Faculty", icon: GraduationCap },
     { to: "/admin/students", label: "Students", icon: Users },
     { to: "/admin/catalog", label: "Catalog", icon: BookOpen },
+    { to: "/admin/admins", label: "Administrators", icon: UserCog },
     { to: "/admin/audit", label: "Audit log", icon: ShieldCheck },
   ],
 };
@@ -45,10 +48,7 @@ function Brand() {
       <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-primary text-white shadow-sm">
         <GraduationCap className="h-5 w-5" />
       </div>
-      <div>
-        <p className="text-sm font-semibold leading-tight text-slate-900">FacultyInsight AI</p>
-        <p className="text-[11px] text-slate-500">Better teaching, together</p>
-      </div>
+      <p className="text-sm font-semibold leading-tight text-slate-900">FacultyInsight AI</p>
     </div>
   );
 }
@@ -183,25 +183,22 @@ export function AppLayout() {
       >
         <div className="space-y-4">
           <Field label="Current password" htmlFor="current-password">
-            <Input
+            <PasswordInput
               id="current-password"
-              type="password"
               value={passwords.current_password}
               onChange={(event) => setPasswords({ ...passwords, current_password: event.target.value })}
             />
           </Field>
           <Field label="New password" htmlFor="new-password">
-            <Input
+            <PasswordInput
               id="new-password"
-              type="password"
               value={passwords.new_password}
               onChange={(event) => setPasswords({ ...passwords, new_password: event.target.value })}
             />
           </Field>
           <Field label="Confirm new password" htmlFor="confirm-password">
-            <Input
+            <PasswordInput
               id="confirm-password"
-              type="password"
               value={passwords.confirm_password}
               onChange={(event) => setPasswords({ ...passwords, confirm_password: event.target.value })}
             />
@@ -214,40 +211,17 @@ export function AppLayout() {
 
 export function AuthShell({ children, title, subtitle }: { children: ReactNode; title: string; subtitle: string }) {
   return (
-    <div className="grid min-h-screen lg:grid-cols-2">
-      <div className="hidden flex-col justify-between bg-slate-900 p-10 text-white lg:flex">
-        <div className="flex items-center gap-3">
-          <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-white/10">
-            <GraduationCap className="h-6 w-6" />
-          </div>
-          <p className="text-lg font-semibold">FacultyInsight AI</p>
-        </div>
-        <div className="max-w-md">
-          <h2 className="text-3xl font-semibold leading-tight">Turning student feedback into better teaching.</h2>
-          <p className="mt-4 text-sm leading-relaxed text-slate-300">
-            Anonymous, validated feedback with strict faculty isolation, evidence-based insights and transparent
-            analytics — built for a CSE department.
-          </p>
-          <ul className="mt-8 space-y-3 text-sm text-slate-300">
-            <li>• Anonymous comments, never linked to student identities</li>
-            <li>• Each faculty member sees only their own feedback</li>
-            <li>• Explainable sentiment and evidence-based strengths</li>
-          </ul>
-        </div>
-        <p className="text-xs text-slate-500">FacultyInsight AI · Academic feedback platform</p>
+    <div className="flex min-h-screen flex-col items-center justify-center bg-slate-50 p-6">
+      <div className="mb-6">
+        <Brand />
       </div>
-      <div className="flex items-center justify-center p-6">
-        <Card className="w-full max-w-md">
-          <CardContent className="p-7">
-            <div className="mb-6 lg:hidden">
-              <Brand />
-            </div>
-            <h1 className="text-2xl font-semibold text-slate-900">{title}</h1>
-            <p className="mt-1 text-sm text-slate-500">{subtitle}</p>
-            <div className="mt-6">{children}</div>
-          </CardContent>
-        </Card>
-      </div>
+      <Card className="w-full max-w-md">
+        <CardContent className="p-7">
+          <h1 className="text-2xl font-semibold text-slate-900">{title}</h1>
+          <p className="mt-1 text-sm text-slate-500">{subtitle}</p>
+          <div className="mt-6">{children}</div>
+        </CardContent>
+      </Card>
     </div>
   );
 }

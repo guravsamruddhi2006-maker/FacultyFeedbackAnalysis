@@ -1,4 +1,5 @@
 import { useMemo, useState } from "react";
+import { Link } from "react-router-dom";
 import {
   Bar,
   BarChart,
@@ -113,18 +114,26 @@ export function FacultyDashboard() {
   );
 
   const { notify } = useToast();
+  const [exporting, setExporting] = useState<"csv" | "pdf" | null>(null);
   const exportReport = async (format: "csv" | "pdf") => {
     const params = new URLSearchParams();
     if (filters.year) params.set("academic_year", filters.year);
     if (filters.semester) params.set("semester_number", filters.semester);
     if (filters.subject) params.set("subject_code", filters.subject);
     const queryStringValue = params.toString();
-    await downloadReport(
-      `/reports/faculty/me${queryStringValue ? `?${queryStringValue}` : ""}`,
-      format,
-      `faculty-performance-${data?.faculty_id ?? "current"}.${format}`,
-    );
-    notify(`Faculty report exported as ${format.toUpperCase()}.`, "success");
+    setExporting(format);
+    try {
+      await downloadReport(
+        `/reports/faculty/me${queryStringValue ? `?${queryStringValue}` : ""}`,
+        format,
+        `faculty-performance-${data?.faculty_id ?? "current"}.${format}`,
+      );
+      notify(`Faculty report exported as ${format.toUpperCase()}.`, "success");
+    } catch (err) {
+      notify(err instanceof ApiError ? err.message : "The report could not be exported.", "error");
+    } finally {
+      setExporting(null);
+    }
   };
 
   const data = dashboard.data;
@@ -141,13 +150,18 @@ export function FacultyDashboard() {
     <div className="space-y-6">
       <PageHeader
         title="Teaching overview"
-        description="Your assigned offerings and feedback insights. Student identities are never shown."
+        description="Your selected subjects and feedback insights. Student identities are never shown."
         actions={
           <div className="flex gap-2">
-            <Button size="sm" variant="outline" onClick={() => void exportReport("csv")}>
+            <Link to="/faculty/subjects">
+              <Button size="sm" variant="outline" icon={<BookOpen className="h-4 w-4" />}>
+                Manage subjects
+              </Button>
+            </Link>
+            <Button size="sm" variant="outline" loading={exporting === "csv"} onClick={() => void exportReport("csv")}>
               Export CSV
             </Button>
-            <Button size="sm" variant="outline" onClick={() => void exportReport("pdf")}>
+            <Button size="sm" variant="outline" loading={exporting === "pdf"} onClick={() => void exportReport("pdf")}>
               Export PDF
             </Button>
           </div>
@@ -215,7 +229,7 @@ export function FacultyDashboard() {
               tone="amber"
             />
             <StatCard
-              label="Assigned offerings"
+              label="Selected subjects"
               value={filteredOfferings.length}
               icon={<BookOpen className="h-5 w-5" />}
               tone="violet"
@@ -231,11 +245,11 @@ export function FacultyDashboard() {
 
           <Card>
             <CardHeader>
-              <CardTitle>Assigned subjects and semesters</CardTitle>
+              <CardTitle>My subjects and semesters</CardTitle>
             </CardHeader>
             <CardContent>
               {offerings.loading ? (
-                <LoadingBlock label="Loading assigned subjects…" />
+                <LoadingBlock label="Loading your subjects…" />
               ) : filteredOfferings.length ? (
                 <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
                   {filteredOfferings.map((offering) => (
@@ -259,7 +273,10 @@ export function FacultyDashboard() {
                   ))}
                 </div>
               ) : (
-                <EmptyState title="No assigned offerings" description="Your assignments will appear here." />
+                <EmptyState
+                  title="No subjects selected"
+                  description="Choose the subjects you teach from the My subjects page."
+                />
               )}
             </CardContent>
           </Card>
@@ -320,7 +337,11 @@ export function FacultyDashboard() {
 
           <Card>
             <CardHeader>
-              <CardTitle>AI insights</CardTitle>
+              <CardTitle>Evidence-based insights</CardTitle>
+              <p className="text-sm text-slate-500">
+                Derived from real ratings and anonymised comments. Sentiment uses the{" "}
+                {data.sentiment.summary.method} method.
+              </p>
             </CardHeader>
             <CardContent className="space-y-6">
               <div>
@@ -404,6 +425,62 @@ export function FacultyDashboard() {
 
           <Card>
             <CardHeader>
+              <CardTitle>Sentiment and recurring topics</CardTitle>
+              <p className="text-sm text-slate-500">
+                Method: {data.sentiment.summary.method}. {data.sentiment.summary.limitations}
+              </p>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              <div className="grid gap-3 sm:grid-cols-3">
+                <div className="rounded-lg bg-emerald-50 p-3">
+                  <p className="text-xs font-medium uppercase tracking-wide text-emerald-700">Positive</p>
+                  <p className="mt-1 text-xl font-semibold text-emerald-900">
+                    {data.sentiment.summary.positive}{" "}
+                    <span className="text-sm font-normal">({data.sentiment.summary.positive_pct}%)</span>
+                  </p>
+                </div>
+                <div className="rounded-lg bg-slate-100 p-3">
+                  <p className="text-xs font-medium uppercase tracking-wide text-slate-600">Neutral</p>
+                  <p className="mt-1 text-xl font-semibold text-slate-800">
+                    {data.sentiment.summary.neutral}{" "}
+                    <span className="text-sm font-normal">({data.sentiment.summary.neutral_pct}%)</span>
+                  </p>
+                </div>
+                <div className="rounded-lg bg-amber-50 p-3">
+                  <p className="text-xs font-medium uppercase tracking-wide text-amber-700">Negative</p>
+                  <p className="mt-1 text-xl font-semibold text-amber-900">
+                    {data.sentiment.summary.negative}{" "}
+                    <span className="text-sm font-normal">({data.sentiment.summary.negative_pct}%)</span>
+                  </p>
+                </div>
+              </div>
+              {data.sentiment.topics.length ? (
+                <div className="space-y-2">
+                  <p className="text-sm font-medium text-slate-800">Recurring topics</p>
+                  {data.sentiment.topics.map((topic) => (
+                    <div
+                      key={topic.topic}
+                      className="flex flex-wrap items-center justify-between gap-2 rounded-lg border p-3 text-sm"
+                    >
+                      <span className="font-medium text-slate-800">{topic.topic}</span>
+                      <span className="text-xs text-slate-500">
+                        {topic.mentions} mentions · {topic.positive} positive · {topic.neutral} neutral ·{" "}
+                        {topic.negative} negative
+                      </span>
+                    </div>
+                  ))}
+                </div>
+              ) : (
+                <EmptyState
+                  title="No recurring topics yet"
+                  description="Topics appear after students submit written comments."
+                />
+              )}
+            </CardContent>
+          </Card>
+
+          <Card>
+            <CardHeader>
               <CardTitle>Anonymous student comments</CardTitle>
             </CardHeader>
             <CardContent>
@@ -449,7 +526,7 @@ export function FacultyCommentsPage() {
     <div className="space-y-6">
       <PageHeader
         title="Student comments"
-        description="Comments are anonymous and scoped to your own assigned offerings."
+        description="Comments are anonymous and scoped to your own selected subjects."
       />
       {options.error ? <Alert variant="error">{options.error}</Alert> : null}
       {comments.error ? <Alert variant="error">{comments.error}</Alert> : null}

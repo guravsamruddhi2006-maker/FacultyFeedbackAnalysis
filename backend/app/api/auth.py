@@ -24,6 +24,7 @@ from app.schemas.auth import (
     FacultyRegister,
     StudentLogin,
     StudentRegister,
+    SetupStatus,
     TokenResponse,
 )
 from app.schemas.common import MessageResponse
@@ -49,19 +50,30 @@ def _token_response(subject: str, role: str, name: str, email: str | None = None
     )
 
 
+@router.get("/setup-status", response_model=SetupStatus)
+def setup_status(conn: Connection = Depends(get_db)):
+    """Public, non-sensitive flag so the setup page can avoid showing a dead form."""
+    with conn.cursor() as cur:
+        cur.execute("SELECT EXISTS (SELECT 1 FROM admins) AS completed")
+        completed = bool(cur.fetchone()["completed"])
+    return SetupStatus(completed=completed)
+
+
 @router.post("/admin/setup", response_model=TokenResponse, status_code=status.HTTP_201_CREATED)
 def setup_first_admin(payload: AdminSetup, conn: Connection = Depends(get_db)):
-    with conn.cursor() as cur:
-        cur.execute("SELECT COUNT(*) AS count FROM admins")
-        if cur.fetchone()["count"] > 0:
-            raise HTTPException(
-                status_code=status.HTTP_403_FORBIDDEN,
-                detail="Initial setup has already been completed. Ask an existing admin to create your account.",
-            )
     password_hash = hash_password(payload.password)
     try:
         with conn.transaction():
             with conn.cursor() as cur:
+                # Serialise concurrent setup attempts so the one-time form can
+                # never create two initial administrators.
+                cur.execute("SELECT pg_advisory_xact_lock(hashtext('facultyinsight_admin_setup'))")
+                cur.execute("SELECT COUNT(*) AS count FROM admins")
+                if cur.fetchone()["count"] > 0:
+                    raise HTTPException(
+                        status_code=status.HTTP_403_FORBIDDEN,
+                        detail="Initial setup is already complete. Sign in with your administrator account.",
+                    )
                 cur.execute(
                     "INSERT INTO admins (name, email, password_hash) VALUES (%s, %s, %s) RETURNING admin_id",
                     (payload.name.strip(), normalize_email(payload.email), password_hash),
@@ -80,32 +92,70 @@ def admin_login(payload: AdminLogin, request: Request, conn: Connection = Depend
             (normalize_email(payload.email),),
         )
         admin = cur.fetchone()
-    if admin is None or not admin["is_active"] or not verify_password(payload.password, admin["password_hash"]):
-        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid email or password.")
+    if admin is None:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail=(
+                "No administrator account was found for this email. "
+                "Administrator accounts are created during initial setup or by an existing administrator."
+            ),
+        )
+    if not admin["is_active"]:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="This administrator account is inactive. Contact another administrator to reactivate it.",
+        )
+    if not verify_password(payload.password, admin["password_hash"]):
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Incorrect password. Please try again.",
+        )
     login_rate_limiter.reset(request)
     return _token_response(str(admin["admin_id"]), "admin", admin["name"], admin["email"])
 
 
 @router.post("/faculty/register", response_model=MessageResponse, status_code=status.HTTP_201_CREATED)
 def register_faculty(payload: FacultyRegister, conn: Connection = Depends(get_db)):
+    email = normalize_email(payload.email)
+    with conn.cursor() as cur:
+        cur.execute("SELECT 1 FROM departments WHERE id = %s", (payload.department_id,))
+        if cur.fetchone() is None:
+            raise HTTPException(status_code=404, detail="Department not found.")
+        cur.execute("SELECT status FROM faculty WHERE email = %s", (email,))
+        existing = cur.fetchone()
+    if existing is not None:
+        raise HTTPException(status_code=409, detail=_faculty_duplicate_message(existing["status"]))
+
     password_hash = hash_password(payload.password)
     try:
         with conn.transaction():
             with conn.cursor() as cur:
-                cur.execute("SELECT 1 FROM departments WHERE id = %s", (payload.department_id,))
-                if cur.fetchone() is None:
-                    raise HTTPException(status_code=404, detail="Department not found.")
                 cur.execute(
                     """
                     INSERT INTO faculty (name, email, password_hash, department_id, status)
                     VALUES (%s, %s, %s, %s, 'pending')
                     """,
-                    (payload.name.strip(), normalize_email(payload.email), password_hash, payload.department_id),
+                    (payload.name.strip(), email, password_hash, payload.department_id),
                 )
     except UniqueViolation as exc:
-        raise HTTPException(status_code=409, detail="A faculty account with this email already exists.") from exc
+        # Another request created the account between the check and the insert.
+        raise HTTPException(status_code=409, detail=_faculty_duplicate_message("pending")) from exc
     return MessageResponse(
         message="Registration submitted. An administrator must approve your account before you can sign in."
+    )
+
+
+def _faculty_duplicate_message(status: str) -> str:
+    if status == "pending":
+        return (
+            "This email is already registered and is awaiting administrator approval. "
+            "You can sign in after an administrator approves it."
+        )
+    if status == "approved":
+        return "This email is already registered. Sign in instead of registering again."
+    return (
+        "This email is already registered but the account is not active. "
+        "Contact the administrator to reactivate it."
     )
 
 
@@ -117,8 +167,16 @@ def faculty_login(payload: FacultyLogin, request: Request, conn: Connection = De
             (normalize_email(payload.email),),
         )
         faculty = cur.fetchone()
-    if faculty is None or not verify_password(payload.password, faculty["password_hash"]):
-        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid email or password.")
+    if faculty is None:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="No faculty account was found for this email. Please register first.",
+        )
+    if not verify_password(payload.password, faculty["password_hash"]):
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Incorrect password. Please try again.",
+        )
     if faculty["status"] == "pending":
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Your faculty account is awaiting administrator approval.")
     if faculty["status"] != "approved":
@@ -148,7 +206,10 @@ def register_student(payload: StudentRegister, conn: Connection = Depends(get_db
                     (normalize_usn(payload.student_id), payload.name.strip(), payload.department_id, password_hash),
                 )
     except UniqueViolation as exc:
-        raise HTTPException(status_code=409, detail="A student with this USN already exists.") from exc
+        raise HTTPException(
+            status_code=409,
+            detail="A student account with this USN already exists. Sign in instead of registering again.",
+        ) from exc
     return MessageResponse(message="Student account created. You can sign in now.")
 
 
@@ -160,8 +221,16 @@ def student_login(payload: StudentLogin, request: Request, conn: Connection = De
             (normalize_usn(payload.student_id),),
         )
         student = cur.fetchone()
-    if student is None or not verify_password(payload.password, student["password_hash"]):
-        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid USN or password.")
+    if student is None:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="No student account was found for this USN. Please create an account first.",
+        )
+    if not verify_password(payload.password, student["password_hash"]):
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Incorrect password. Please try again.",
+        )
     login_rate_limiter.reset(request)
     return _token_response(
         student["student_id"], "student", student["name"], department_id=student["department_id"]

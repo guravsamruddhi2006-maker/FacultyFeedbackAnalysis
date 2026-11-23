@@ -65,3 +65,22 @@ Services:
 - Backend/frontend Dockerfiles and nginx config reviewed; runtime image builds could not be executed in the local
   validation environment because the Docker daemon was unavailable. Run `docker compose up --build -d` in an
   environment with a running Docker daemon to build and start the full stack.
+
+## 10. Vercel deployment (FastAPI + static frontend)
+
+- Vercel project uses the FastAPI framework preset; the ASGI app is exposed via the serverless entry `api/index.py`
+  (FastAPI instance `app`, served as a Vercel Function).
+- The root-level `requirements.txt` is used by the Vercel Python builder (copy of `backend/requirements.txt`).
+- The production frontend build (`frontend/dist`, produced by `npm run build` in `frontend/`) is served by the same
+  FastAPI function through FastAPI's low-priority frontend routes (`app.frontend("/", directory=..., fallback="auto")`.
+  When no API/health route matches, the SPA (with `index.html` fallback) is served; API routes (`/api/*`) and
+  `/health*` take precedence.
+- Frontend API calls use same-origin `/api` base (`VITE_API_BASE_URL` defaults to `/api`).
+- Configure backend env vars on Vercel: `DATABASE_URL` (Neon), `JWT_SECRET_KEY`, `APP_ENV=production`, `DB_*` as needed,
+  `CORS_ORIGINS`, and frontend var `VITE_API_BASE_URL=/api`.
+
+## 11. Remaining deployment blockers
+
+- Live Vercel deployment and Neon connectivity require Vercel CLI authentication and Neon credentials, which are not
+  available in the current execution environment. Local validation (build + tests + health) is complete; deployment
+  itself is pending those credentials.

@@ -14,6 +14,7 @@ import {
   Input,
   LoadingBlock,
   PageHeader,
+  PasswordInput,
   Select,
   Table,
   Td,
@@ -23,9 +24,9 @@ import {
 import { useToast } from "@/context/ToastContext";
 import { useApi } from "@/hooks/useApi";
 import { api, ApiError } from "@/lib/api";
-import type { Department, FacultyMember, FeedbackPeriod, Question, StudentRow, Subject } from "@/lib/types";
+import type { Department, FacultyMember, FeedbackPeriod, Question, StudentRow, Subject, SubjectRequest } from "@/lib/types";
 
-type AdminSection = "faculty" | "students" | "catalog" | "audit";
+type AdminSection = "faculty" | "students" | "catalog" | "admins" | "audit";
 
 function useAdminAction() {
   const { notify } = useToast();
@@ -130,7 +131,7 @@ function FacultyManagement() {
                 ))}
               </Select>
             </Field>
-            <Field label="Temporary password" htmlFor="faculty-password"><Input id="faculty-password" name="password" type="password" required minLength={8} /></Field>
+            <Field label="Temporary password" htmlFor="faculty-password"><PasswordInput id="faculty-password" name="password" required minLength={8} /></Field>
             <div className="md:col-span-2"><Button type="submit" loading={saving}>Create faculty account</Button></div>
           </form>
         </SectionCard>
@@ -139,7 +140,7 @@ function FacultyManagement() {
         <div className="mb-4 max-w-sm"><Input aria-label="Search faculty" value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Search name, email or status" /></div>
         {faculty.loading ? <LoadingBlock label="Loading faculty…" /> : filtered.length ? (
           <Table>
-            <thead><tr><Th>Name</Th><Th>Department</Th><Th>Status</Th><Th>Offerings</Th><Th>Responses</Th><Th className="text-right">Actions</Th></tr></thead>
+            <thead><tr><Th>Name</Th><Th>Department</Th><Th>Status</Th><Th>Subjects</Th><Th>Responses</Th><Th className="text-right">Actions</Th></tr></thead>
             <tbody>{filtered.map((item) => (
               <tr key={item.faculty_id}>
                 <Td><p className="font-medium">{item.name}</p><p className="text-xs text-slate-500">{item.email}</p></Td>
@@ -287,7 +288,7 @@ function StudentManagement() {
                 ))}
               </Select>
             </Field>
-            <Field label="Temporary password" htmlFor="student-password"><Input id="student-password" name="password" type="password" required minLength={8} /></Field>
+            <Field label="Temporary password" htmlFor="student-password"><PasswordInput id="student-password" name="password" required minLength={8} /></Field>
             <div className="md:col-span-2"><Button type="submit" loading={saving}>Create student account</Button></div>
           </form>
         </SectionCard>
@@ -321,6 +322,80 @@ function StudentManagement() {
           </Table>
         ) : <EmptyState title="No students found" description="Try another search or create a student account." />}
       </SectionCard>
+    </div>
+  );
+}
+
+function DepartmentManagement() {
+  const departments = useApi<Department[]>("/catalog/departments");
+  const { run, saving } = useAdminAction();
+  const [editing, setEditing] = useState<Department | null>(null);
+
+  const submit = async (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    const formElement = event.currentTarget;
+    const form = new FormData(formElement);
+    const payload = {
+      name: String(form.get("name")).trim(),
+      code: String(form.get("code")).trim().toUpperCase(),
+    };
+    const ok = await run(
+      () => api(editing ? `/catalog/departments/${editing.id}` : "/catalog/departments", {
+        method: editing ? "PUT" : "POST",
+        body: payload,
+      }),
+      editing ? "Department updated." : "Department created.",
+    );
+    if (ok) {
+      setEditing(null);
+      formElement.reset();
+      departments.reload();
+    }
+  };
+
+  const remove = async (department: Department) => {
+    if (!window.confirm(`Delete department ${department.name}? Departments with faculty or students cannot be deleted.`)) return;
+    const ok = await run(
+      () => api(`/catalog/departments/${department.id}`, { method: "DELETE" }),
+      "Department deleted.",
+    );
+    if (ok) departments.reload();
+  };
+
+  return (
+    <div className="space-y-5">
+      <form key={editing?.id ?? "new-department"} className="grid gap-3 rounded-lg border p-4 md:grid-cols-[2fr_1fr_auto]" onSubmit={submit}>
+        <Field label="Department name" htmlFor="department-name">
+          <Input id="department-name" name="name" required minLength={2} maxLength={120} defaultValue={editing?.name ?? ""} />
+        </Field>
+        <Field label="Code" htmlFor="department-code">
+          <Input id="department-code" name="code" required minLength={2} maxLength={10} defaultValue={editing?.code ?? ""} />
+        </Field>
+        <div className="flex items-end gap-2">
+          <Button type="submit" loading={saving}>{editing ? "Save" : "Add"}</Button>
+          {editing ? <Button type="button" variant="ghost" onClick={() => setEditing(null)}>Cancel</Button> : null}
+        </div>
+      </form>
+      {departments.error ? <Alert variant="error">{departments.error}</Alert> : null}
+      {departments.loading ? <LoadingBlock /> : departments.data?.length ? (
+        <Table>
+          <thead><tr><Th>Code</Th><Th>Department</Th><Th>Faculty</Th><Th>Students</Th><Th className="text-right">Actions</Th></tr></thead>
+          <tbody>{departments.data.map((department) => (
+            <tr key={department.id}>
+              <Td>{department.code}</Td>
+              <Td>{department.name}</Td>
+              <Td>{department.faculty_count ?? 0}</Td>
+              <Td>{department.student_count ?? 0}</Td>
+              <Td className="text-right">
+                <div className="flex justify-end gap-2">
+                  <Button size="sm" variant="outline" onClick={() => setEditing(department)} icon={<Pencil className="h-3.5 w-3.5" />}>Edit</Button>
+                  <Button size="sm" variant="ghost" onClick={() => void remove(department)} icon={<Trash2 className="h-3.5 w-3.5" />}>Delete</Button>
+                </div>
+              </Td>
+            </tr>
+          ))}</tbody>
+        </Table>
+      ) : <EmptyState title="No departments configured" description="Add the verified CSE department to start." />}
     </div>
   );
 }
@@ -428,78 +503,125 @@ function AcademicYearManagement() {
   );
 }
 
-interface OfferingRow {
-  offering_id: number;
-  academic_year: string;
-  semester_number: number;
-  subject_code: string;
-  subject_name: string;
-  faculty_id: number;
-  faculty_name: string;
-  period_open: boolean;
-}
-
-function OfferingManagement() {
-  const offerings = useApi<PageList<OfferingRow>>("/catalog/course-offerings?page_size=100");
-  const subjects = useApi<Subject[]>("/catalog/subjects");
-  const years = useApi<Array<{ academic_year: string }>>("/catalog/academic-years");
-  const faculty = useApi<PageList<FacultyMember>>("/admin/faculty?status=approved&page_size=100");
-  const semesters = useApi<Array<{ semester_number: number }>>("/catalog/semesters");
+function SubjectRequestManagement() {
+  const [status, setStatus] = useState<"pending" | "approved" | "rejected" | "all">("pending");
+  const requests = useApi<PageList<SubjectRequest>>(
+    `/admin/subject-requests?page_size=100${status === "all" ? "" : `&status=${status}`}`,
+  );
   const { run, saving } = useAdminAction();
 
-  const submit = async (event: FormEvent<HTMLFormElement>) => {
-    event.preventDefault();
-    const formElement = event.currentTarget;
-    const form = new FormData(formElement);
-    const ok = await run(() => api("/catalog/course-offerings", {
-      method: "POST",
-      body: {
-        academic_year: form.get("academic_year"),
-        semester_number: Number(form.get("semester_number")),
-        subject_code: form.get("subject_code"),
-        faculty_id: Number(form.get("faculty_id")),
-      },
-    }), "Course offering assigned.");
-    if (ok) {
-      formElement.reset();
-      offerings.reload();
-    }
-  };
-
-  const remove = async (offering: OfferingRow) => {
-    if (!window.confirm(`Remove ${offering.subject_code} assigned to ${offering.faculty_name}? Existing feedback prevents removal.`)) return;
-    const ok = await run(() => api(`/catalog/course-offerings/${offering.offering_id}`, { method: "DELETE" }), "Course offering removed.");
-    if (ok) offerings.reload();
+  const review = async (item: SubjectRequest, decision: "approved" | "rejected") => {
+    const note =
+      decision === "rejected"
+        ? window.prompt(`Reason for rejecting ${item.subject_code}? (optional)`) ?? ""
+        : "";
+    const ok = await run(
+      () =>
+        api(`/admin/subject-requests/${item.request_id}`, {
+          method: "PATCH",
+          body: { status: decision, admin_note: note.trim() || null },
+        }),
+      decision === "approved"
+        ? "Subject approved and added to the catalog."
+        : "Subject request rejected.",
+    );
+    if (ok) requests.reload();
   };
 
   return (
     <div className="space-y-5">
-      <form className="grid gap-3 rounded-lg border p-4 md:grid-cols-2 xl:grid-cols-4" onSubmit={submit}>
-        <Field label="Academic year" htmlFor="offering-year">
-          <Select id="offering-year" name="academic_year" defaultValue="" required><option value="" disabled>Select year</option>{(years.data ?? []).map((item) => <option key={item.academic_year}>{item.academic_year}</option>)}</Select>
-        </Field>
-        <Field label="Semester" htmlFor="offering-semester">
-          <Select id="offering-semester" name="semester_number" defaultValue="" required><option value="" disabled>Select semester</option>{(semesters.data ?? []).map((item) => <option key={item.semester_number} value={item.semester_number}>{item.semester_number}</option>)}</Select>
-        </Field>
-        <Field label="Subject" htmlFor="offering-subject">
-          <Select id="offering-subject" name="subject_code" defaultValue="" required><option value="" disabled>Select subject</option>{(subjects.data ?? []).map((item) => <option key={item.subject_code} value={item.subject_code}>{item.subject_code} · {item.subject_name}</option>)}</Select>
-        </Field>
-        <Field label="Approved faculty" htmlFor="offering-faculty">
-          <Select id="offering-faculty" name="faculty_id" defaultValue="" required><option value="" disabled>Select faculty</option>{(faculty.data?.items ?? []).map((item) => <option key={item.faculty_id} value={item.faculty_id}>{item.name}</option>)}</Select>
-        </Field>
-        <div className="xl:col-span-4"><Button type="submit" loading={saving}>Assign course offering</Button></div>
-      </form>
-      {[offerings, subjects, years, faculty, semesters].some((item) => item.error) ? <Alert variant="error">Some course-offering options could not be loaded. Refresh the page and try again.</Alert> : null}
-      {offerings.loading ? <LoadingBlock /> : offerings.data?.items.length ? (
+      <Alert variant="info">
+        Approving a request adds the subject to the official catalog. It does not assign the subject to a faculty
+        member; faculty select their own subjects.
+      </Alert>
+      <div className="flex flex-wrap gap-2">
+        {(["pending", "approved", "rejected", "all"] as const).map((value) => (
+          <Button
+            key={value}
+            size="sm"
+            variant={status === value ? "secondary" : "ghost"}
+            onClick={() => setStatus(value)}
+          >
+            {value === "all" ? "All requests" : value.charAt(0).toUpperCase() + value.slice(1)}
+          </Button>
+        ))}
+      </div>
+      {requests.error ? <Alert variant="error">{requests.error}</Alert> : null}
+      {requests.loading ? (
+        <LoadingBlock />
+      ) : requests.data?.items.length ? (
         <Table>
-          <thead><tr><Th>Academic year</Th><Th>Semester</Th><Th>Subject</Th><Th>Faculty</Th><Th>Feedback period</Th><Th /></tr></thead>
-          <tbody>{offerings.data.items.map((item) => (
-            <tr key={item.offering_id}>
-              <Td>{item.academic_year}</Td><Td>{item.semester_number}</Td><Td>{item.subject_code} · {item.subject_name}</Td><Td>{item.faculty_name}</Td><Td><Badge variant={item.period_open ? "success" : "outline"}>{item.period_open ? "Open" : "Closed"}</Badge></Td><Td><Button size="sm" variant="ghost" onClick={() => void remove(item)} icon={<Trash2 className="h-3.5 w-3.5" />}>Remove</Button></Td>
+          <thead>
+            <tr>
+              <Th>Faculty</Th>
+              <Th>Subject</Th>
+              <Th>Semester</Th>
+              <Th>Status</Th>
+              <Th>Requested</Th>
+              <Th className="text-right">Actions</Th>
             </tr>
-          ))}</tbody>
+          </thead>
+          <tbody>
+            {requests.data.items.map((item) => (
+              <tr key={item.request_id}>
+                <Td>
+                  <p className="font-medium">{item.faculty_name}</p>
+                  <p className="text-xs text-slate-500">{item.faculty_email}</p>
+                </Td>
+                <Td>
+                  <p className="font-medium">{item.subject_code}</p>
+                  <p className="text-xs text-slate-500">{item.subject_name}</p>
+                  {item.in_catalog ? <Badge variant="success">In catalog</Badge> : null}
+                </Td>
+                <Td>{item.semester_number}</Td>
+                <Td>
+                  <Badge
+                    variant={
+                      item.status === "approved" ? "success" : item.status === "rejected" ? "warning" : "default"
+                    }
+                  >
+                    {item.status}
+                  </Badge>
+                  {item.admin_note ? (
+                    <p className="mt-1 max-w-[220px] whitespace-normal text-xs text-slate-500">{item.admin_note}</p>
+                  ) : null}
+                </Td>
+                <Td className="text-xs text-slate-500">{new Date(item.created_at).toLocaleDateString()}</Td>
+                <Td className="text-right">
+                  {item.status === "pending" ? (
+                    <div className="flex justify-end gap-2">
+                      <Button
+                        size="sm"
+                        loading={saving}
+                        onClick={() => void review(item, "approved")}
+                        icon={<Check className="h-3.5 w-3.5" />}
+                      >
+                        Approve
+                      </Button>
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        loading={saving}
+                        onClick={() => void review(item, "rejected")}
+                        icon={<X className="h-3.5 w-3.5" />}
+                      >
+                        Reject
+                      </Button>
+                    </div>
+                  ) : (
+                    <span className="text-xs text-slate-400">Reviewed</span>
+                  )}
+                </Td>
+              </tr>
+            ))}
+          </tbody>
         </Table>
-      ) : <EmptyState title="No course offerings configured" />}
+      ) : (
+        <EmptyState
+          title="No subject requests"
+          description="Faculty requests for missing subjects will appear here."
+        />
+      )}
     </div>
   );
 }
@@ -613,25 +735,51 @@ function FeedbackQuestionManagement() {
 }
 
 function CatalogManagement() {
-  const [tab, setTab] = useState<"subjects" | "offerings" | "years" | "periods" | "questions">("subjects");
+  const [tab, setTab] = useState<"departments" | "subjects" | "requests" | "years" | "periods" | "questions">("departments");
+  const { notify } = useToast();
+  const [bootstrapping, setBootstrapping] = useState(false);
   const tabs: Array<{ id: typeof tab; label: string }> = [
+    { id: "departments", label: "Departments" },
     { id: "subjects", label: "Subjects" },
-    { id: "offerings", label: "Course offerings" },
+    { id: "requests", label: "Subject requests" },
     { id: "years", label: "Academic years" },
     { id: "periods", label: "Feedback periods" },
     { id: "questions", label: "Feedback questions" },
   ];
 
+  const bootstrap = async () => {
+    if (!window.confirm("Ensure the fixed semesters, verified CSE department, base academic years and default feedback questions exist? Existing data is never changed.")) return;
+    setBootstrapping(true);
+    try {
+      const result = await api<{ message: string }>("/catalog/bootstrap", { method: "POST" });
+      notify(result.message, "success");
+      window.location.reload();
+    } catch (error) {
+      notify(error instanceof ApiError ? error.message : "Base catalog could not be initialized.", "error");
+    } finally {
+      setBootstrapping(false);
+    }
+  };
+
   return (
     <div className="space-y-6">
-      <PageHeader title="Catalog management" description="Manage the department catalog and feedback schedule." />
+      <PageHeader
+        title="Catalog management"
+        description="Manage departments, subjects, subject requests and the feedback schedule."
+        actions={
+          <Button variant="outline" loading={bootstrapping} onClick={() => void bootstrap()}>
+            Initialize base catalog
+          </Button>
+        }
+      />
       <div className="flex gap-2 overflow-x-auto border-b pb-2">
         {tabs.map((item) => (
           <Button key={item.id} variant={tab === item.id ? "secondary" : "ghost"} size="sm" onClick={() => setTab(item.id)}>{item.label}</Button>
         ))}
       </div>
+      {tab === "departments" ? <SectionCard title="Departments"><DepartmentManagement /></SectionCard> : null}
       {tab === "subjects" ? <SectionCard title="Subjects"><SubjectManagement /></SectionCard> : null}
-      {tab === "offerings" ? <SectionCard title="Course offerings"><OfferingManagement /></SectionCard> : null}
+      {tab === "requests" ? <SectionCard title="Subject requests"><SubjectRequestManagement /></SectionCard> : null}
       {tab === "years" ? <SectionCard title="Academic years"><AcademicYearManagement /></SectionCard> : null}
       {tab === "periods" ? <SectionCard title="Feedback periods"><FeedbackPeriodManagement /></SectionCard> : null}
       {tab === "questions" ? <SectionCard title="Feedback questions"><FeedbackQuestionManagement /></SectionCard> : null}
@@ -669,9 +817,118 @@ function AuditManagement() {
   );
 }
 
+interface AdminRow {
+  admin_id: number;
+  name: string;
+  email: string;
+  is_active: boolean;
+  created_at: string;
+}
+
+function AdministratorManagement() {
+  const admins = useApi<AdminRow[]>("/admin/admins");
+  const { run, saving } = useAdminAction();
+  const [creating, setCreating] = useState(false);
+
+  const createAdmin = async (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    const formElement = event.currentTarget;
+    const form = new FormData(formElement);
+    const ok = await run(
+      () =>
+        api("/auth/admins", {
+          method: "POST",
+          body: {
+            name: String(form.get("name")).trim(),
+            email: String(form.get("email")).trim(),
+            password: String(form.get("password")),
+            confirm_password: String(form.get("confirm_password")),
+          },
+        }),
+      "Administrator account created.",
+    );
+    if (ok) {
+      setCreating(false);
+      admins.reload();
+    }
+  };
+
+  const toggleStatus = async (admin: AdminRow) => {
+    const ok = await run(
+      () => api(`/admin/admins/${admin.admin_id}/status`, {
+        method: "PATCH",
+        body: { is_active: !admin.is_active },
+      }),
+      admin.is_active ? "Administrator deactivated." : "Administrator reactivated.",
+    );
+    if (ok) admins.reload();
+  };
+
+  return (
+    <div className="space-y-6">
+      <PageHeader
+        title="Administrators"
+        description="Manage who can configure the catalog and review institutional analytics."
+        actions={
+          <Button onClick={() => setCreating((value) => !value)} icon={<Plus className="h-4 w-4" />}>
+            {creating ? "Close" : "New administrator"}
+          </Button>
+        }
+      />
+
+      {creating ? (
+        <SectionCard title="Create administrator">
+          <form className="grid gap-3 md:grid-cols-2" onSubmit={createAdmin}>
+            <Field label="Full name" htmlFor="admin-name">
+              <Input id="admin-name" name="name" required minLength={2} maxLength={120} />
+            </Field>
+            <Field label="Email" htmlFor="admin-email">
+              <Input id="admin-email" name="email" type="email" required maxLength={160} />
+            </Field>
+            <Field label="Password" htmlFor="admin-password">
+              <PasswordInput id="admin-password" name="password" required minLength={8} />
+            </Field>
+            <Field label="Confirm password" htmlFor="admin-confirm-password">
+              <PasswordInput id="admin-confirm-password" name="confirm_password" required minLength={8} />
+            </Field>
+            <div className="md:col-span-2">
+              <Button type="submit" loading={saving}>Create administrator</Button>
+            </div>
+          </form>
+        </SectionCard>
+      ) : null}
+
+      {admins.error ? <Alert variant="error">{admins.error}</Alert> : null}
+      <SectionCard title={`Administrator accounts (${admins.data?.length ?? 0})`}>
+        {admins.loading ? <LoadingBlock /> : admins.data?.length ? (
+          <Table>
+            <thead><tr><Th>Name</Th><Th>Email</Th><Th>Created</Th><Th>Status</Th><Th className="text-right">Actions</Th></tr></thead>
+            <tbody>
+              {admins.data.map((admin) => (
+                <tr key={admin.admin_id}>
+                  <Td>{admin.name}</Td>
+                  <Td>{admin.email}</Td>
+                  <Td>{new Date(admin.created_at).toLocaleDateString()}</Td>
+                  <Td><Badge variant={admin.is_active ? "success" : "outline"}>{admin.is_active ? "Active" : "Inactive"}</Badge></Td>
+                  <Td className="text-right">
+                    <Button size="sm" variant="outline" onClick={() => void toggleStatus(admin)}>
+                      {admin.is_active ? "Deactivate" : "Reactivate"}
+                    </Button>
+                  </Td>
+                </tr>
+              ))}
+            </tbody>
+          </Table>
+        ) : <EmptyState title="No administrator accounts" />}
+      </SectionCard>
+    </div>
+  );
+}
+
 export function AdminManagement({ section }: { section: AdminSection }) {
   if (section === "faculty") return <FacultyManagement />;
   if (section === "students") return <StudentManagement />;
   if (section === "catalog") return <CatalogManagement />;
+  if (section === "admins") return <AdministratorManagement />;
   return <AuditManagement />;
 }

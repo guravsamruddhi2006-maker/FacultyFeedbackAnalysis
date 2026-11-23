@@ -7,7 +7,7 @@ import { GraduationCap, ShieldCheck, UserRound } from "lucide-react";
 
 import { AuthShell } from "@/components/Layout";
 import { homeForRole } from "@/components/ProtectedRoute";
-import { Alert, Button, Field, Input, Select } from "@/components/ui";
+import { Alert, Button, Field, Input, LoadingBlock, PasswordInput, Select } from "@/components/ui";
 import { useAuth } from "@/context/AuthContext";
 import { useToast } from "@/context/ToastContext";
 import { api, ApiError } from "@/lib/api";
@@ -31,14 +31,38 @@ const roleLabels: Record<Role, string> = {
   admin: "Administrator",
 };
 
+function isRole(value: unknown): value is Role {
+  return value === "student" || value === "faculty" || value === "admin";
+}
+
+function useSetupCompleted() {
+  const [completed, setCompleted] = useState<boolean | null>(null);
+  useEffect(() => {
+    let active = true;
+    api<{ completed: boolean }>("/auth/setup-status")
+      .then((status) => {
+        if (active) setCompleted(status.completed);
+      })
+      .catch(() => {
+        if (active) setCompleted(null);
+      });
+    return () => {
+      active = false;
+    };
+  }, []);
+  return completed;
+}
+
 export function LoginPage() {
   const { user, login, loading } = useAuth();
   const navigate = useNavigate();
   const location = useLocation();
   const { notify } = useToast();
-  const [role, setRole] = useState<Role>("student");
+  const requestedRole = (location.state as { role?: unknown } | null)?.role;
+  const [role, setRole] = useState<Role>(isRole(requestedRole) ? requestedRole : "student");
   const [error, setError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
+  const setupCompleted = useSetupCompleted();
 
   const {
     register,
@@ -81,6 +105,7 @@ export function LoginPage() {
               type="button"
               onClick={() => {
                 setRole(item);
+                setError(null);
                 setValue("identifier", "");
               }}
               className={`flex items-center justify-center gap-1.5 rounded-md px-2 py-2 text-xs font-medium transition ${
@@ -96,6 +121,11 @@ export function LoginPage() {
 
       <form className="space-y-4" onSubmit={handleSubmit(onSubmit)}>
         {error ? <Alert variant="error">{error}</Alert> : null}
+        {role === "admin" ? (
+          <p className="text-xs text-slate-500">
+            Administrator accounts are created during initial setup or by an existing administrator.
+          </p>
+        ) : null}
         <Field
           label={role === "student" ? "USN" : "Email address"}
           htmlFor="identifier"
@@ -109,7 +139,7 @@ export function LoginPage() {
           />
         </Field>
         <Field label="Password" htmlFor="password" error={errors.password?.message}>
-          <Input id="password" type="password" autoComplete="current-password" {...register("password")} />
+          <PasswordInput id="password" autoComplete="current-password" {...register("password")} />
         </Field>
         <Button type="submit" className="w-full" size="lg" loading={submitting}>
           Sign in as {roleLabels[role].toLowerCase()}
@@ -129,12 +159,14 @@ export function LoginPage() {
             Register for approval
           </Link>
         </p>
-        <p>
-          First time setting up the system?{" "}
-          <Link to="/setup" className="font-medium text-primary hover:underline">
-            Create the first admin
-          </Link>
-        </p>
+        {setupCompleted === false ? (
+          <p>
+            First time setting up the system?{" "}
+            <Link to="/setup" className="font-medium text-primary hover:underline">
+              Create the first admin
+            </Link>
+          </p>
+        ) : null}
       </div>
     </AuthShell>
   );
@@ -159,6 +191,7 @@ export function RegisterPage({ kind }: { kind: "student" | "faculty" }) {
   const { notify } = useToast();
   const [departments, setDepartments] = useState<Department[]>([]);
   const [error, setError] = useState<string | null>(null);
+  const [existingAccount, setExistingAccount] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const {
     register,
@@ -175,6 +208,7 @@ export function RegisterPage({ kind }: { kind: "student" | "faculty" }) {
   const onSubmit = async (values: RegisterForm) => {
     setSubmitting(true);
     setError(null);
+    setExistingAccount(false);
     try {
       const body =
         kind === "student"
@@ -194,9 +228,10 @@ export function RegisterPage({ kind }: { kind: "student" | "faculty" }) {
             };
       const response = await api<{ message: string }>(`/auth/${kind}/register`, { method: "POST", body });
       notify(response.message, "success");
-      navigate("/login");
+      navigate("/login", { state: { role: kind } });
     } catch (err) {
       setError(err instanceof ApiError ? err.message : "Registration failed. Please try again.");
+      setExistingAccount(err instanceof ApiError && err.status === 409);
     } finally {
       setSubmitting(false);
     }
@@ -208,12 +243,23 @@ export function RegisterPage({ kind }: { kind: "student" | "faculty" }) {
       title={isStudent ? "Create a student account" : "Faculty registration"}
       subtitle={
         isStudent
-          ? "Sign up with your USN to submit anonymous course feedback."
+          ? "Sign up with your USN to submit course feedback."
           : "Your account becomes active after an administrator approves it."
       }
     >
       <form className="space-y-4" onSubmit={handleSubmit(onSubmit)}>
-        {error ? <Alert variant="error">{error}</Alert> : null}
+        {error ? (
+          <Alert variant="error">
+            <p>{error}</p>
+            {existingAccount ? (
+              <p className="mt-1">
+                <Link to="/login" state={{ role: kind }} className="font-medium underline">
+                  Go to {isStudent ? "student" : "faculty"} sign in
+                </Link>
+              </p>
+            ) : null}
+          </Alert>
+        ) : null}
         <Field label="Full name" htmlFor="name" error={errors.name?.message}>
           <Input id="name" placeholder="Your name" {...register("name")} />
         </Field>
@@ -242,12 +288,11 @@ export function RegisterPage({ kind }: { kind: "student" | "faculty" }) {
         </Field>
         <div className="grid gap-4 sm:grid-cols-2">
           <Field label="Password" htmlFor="password" error={errors.password?.message}>
-            <Input id="password" type="password" autoComplete="new-password" {...register("password")} />
+            <PasswordInput id="password" autoComplete="new-password" {...register("password")} />
           </Field>
           <Field label="Confirm password" htmlFor="confirm_password" error={errors.confirm_password?.message}>
-            <Input
+            <PasswordInput
               id="confirm_password"
-              type="password"
               autoComplete="new-password"
               {...register("confirm_password")}
             />
@@ -259,7 +304,7 @@ export function RegisterPage({ kind }: { kind: "student" | "faculty" }) {
       </form>
       <p className="mt-4 text-center text-sm text-slate-500">
         Already registered?{" "}
-        <Link to="/login" className="font-medium text-primary hover:underline">
+        <Link to="/login" state={{ role: kind }} className="font-medium text-primary hover:underline">
           Sign in
         </Link>
       </p>
@@ -280,10 +325,13 @@ const setupSchema = z
   });
 type SetupForm = z.infer<typeof setupSchema>;
 
+type SetupState = "checking" | "open" | "completed" | "error";
+
 export function AdminSetupPage() {
-  const { setupAdmin } = useAuth();
+  const { user, loading: authLoading, setupAdmin } = useAuth();
   const navigate = useNavigate();
   const { notify } = useToast();
+  const [state, setState] = useState<SetupState>("checking");
   const [error, setError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
   const {
@@ -291,6 +339,26 @@ export function AdminSetupPage() {
     handleSubmit,
     formState: { errors },
   } = useForm<SetupForm>({ resolver: zodResolver(setupSchema) });
+
+  useEffect(() => {
+    let active = true;
+    api<{ completed: boolean }>("/auth/setup-status")
+      .then((status) => {
+        if (active) setState(status.completed ? "completed" : "open");
+      })
+      .catch(() => {
+        if (active) setState("error");
+      });
+    return () => {
+      active = false;
+    };
+  }, []);
+
+  useEffect(() => {
+    if (!authLoading && user) {
+      navigate(homeForRole(user.role), { replace: true });
+    }
+  }, [user, authLoading, navigate]);
 
   const onSubmit = async (values: SetupForm) => {
     setSubmitting(true);
@@ -305,11 +373,50 @@ export function AdminSetupPage() {
       notify("Administrator account created.", "success");
       navigate("/admin", { replace: true });
     } catch (err) {
+      if (err instanceof ApiError && err.status === 403) {
+        setState("completed");
+      }
       setError(err instanceof ApiError ? err.message : "Setup failed. Please try again.");
     } finally {
       setSubmitting(false);
     }
   };
+
+  if (state === "checking") {
+    return (
+      <AuthShell title="First admin setup" subtitle="Checking whether setup is still required.">
+        <LoadingBlock label="Checking setup status…" />
+      </AuthShell>
+    );
+  }
+
+  if (state === "completed") {
+    return (
+      <AuthShell
+        title="Setup already completed"
+        subtitle="An administrator account already exists. Sign in with your administrator account."
+      >
+        <Link to="/login" state={{ role: "admin" }} className="block">
+          <Button className="w-full" size="lg">
+            Go to sign in
+          </Button>
+        </Link>
+      </AuthShell>
+    );
+  }
+
+  if (state === "error") {
+    return (
+      <AuthShell title="First admin setup" subtitle="Setup status could not be checked.">
+        <div className="space-y-4">
+          <Alert variant="error">The server could not be reached. Please try again.</Alert>
+          <Button className="w-full" size="lg" onClick={() => window.location.reload()}>
+            Retry
+          </Button>
+        </div>
+      </AuthShell>
+    );
+  }
 
   return (
     <AuthShell
@@ -326,12 +433,11 @@ export function AdminSetupPage() {
         </Field>
         <div className="grid gap-4 sm:grid-cols-2">
           <Field label="Password" htmlFor="password" error={errors.password?.message}>
-            <Input id="password" type="password" autoComplete="new-password" {...register("password")} />
+            <PasswordInput id="password" autoComplete="new-password" {...register("password")} />
           </Field>
           <Field label="Confirm password" htmlFor="confirm_password" error={errors.confirm_password?.message}>
-            <Input
+            <PasswordInput
               id="confirm_password"
-              type="password"
               autoComplete="new-password"
               {...register("confirm_password")}
             />
@@ -343,7 +449,7 @@ export function AdminSetupPage() {
       </form>
       <p className="mt-4 text-center text-sm text-slate-500">
         Setup already completed?{" "}
-        <Link to="/login" className="font-medium text-primary hover:underline">
+        <Link to="/login" state={{ role: "admin" }} className="font-medium text-primary hover:underline">
           Sign in
         </Link>
       </p>

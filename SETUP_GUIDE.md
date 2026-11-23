@@ -63,6 +63,16 @@ Vite proxy: `/api` → `http://localhost:8000`.
 ## 6. Initial admin
 
 - `POST /api/auth/admin/setup` via `http://localhost:5173/setup`, or script `python -m app.scripts.create_admin`.
+- The setup form works only while the `admins` table is empty. After the first administrator exists, the form is disabled and the backend rejects further setup attempts.
+- Additional administrators are created by an authenticated administrator from **Administrators** in the dashboard. There is no public administrator registration page.
+- Operator-only recovery (direct database access required, never public):
+
+```bash
+cd backend
+python -m app.recover_admin --list
+python -m app.recover_admin --email admin@college.edu --name "Administrator"
+python -m app.recover_admin --email admin@college.edu --reset   # explicit RESET confirmation
+```
 
 ## 7. Demo data
 

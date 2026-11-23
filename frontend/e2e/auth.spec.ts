@@ -11,8 +11,9 @@ test.describe("Authentication guard (browser)", () => {
     });
   }
 
-  test("unauthenticated visit to home redirects to landing page", async ({ page }) => {
+  test("unauthenticated visit to home redirects to login", async ({ page }) => {
     await page.goto("/");
-    await expect(page.getByText(/Turning student feedback into better teaching/i)).toBeVisible();
+    await expect(page).toHaveURL(/\/login/);
+    await expect(page.getByRole("heading", { name: "Sign in" })).toBeVisible();
   });
 });

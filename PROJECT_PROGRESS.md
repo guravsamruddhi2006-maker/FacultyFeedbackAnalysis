@@ -146,7 +146,12 @@ Last updated: 2026-11-16
 - [x] Inspected complete project for Vercel/Neon compatibility (FastAPI ASGI, lexicon AI path, heavy ML deps, static SPA, Neon DB).
 - [x] Prepared minimal Vercel configuration: `vercel.json` + `api/index.py` (existing FastAPI app preserved).
 - [x] Confirmed free-tier compatibility checks: FastAPI on Vercel OK (ASGI); AI/ML default lexicon OK; frontend static OK; Neon PostgreSQL OK.
+- [x] Phase Two fix — Vercel build failure root cause: missing root-level `requirements.txt` (backend deps live in `backend/requirements.txt`) so the Vercel Python builder could not resolve FastAPI dependencies; root `requirements.txt` created (copy of `backend/requirements.txt`).
+- [x] Phase Two fix — backend now serves production frontend build (`frontend/dist`) via FastAPI `app.frontend("/", directory=..., fallback="auto")`; root health route retained when no frontend build exists.
+- [x] Phase Two fix — `vercel.json` migrated to current Vercel config: FastAPI framework preset + `functions` for `api/index.py` (legacy `builds` array with `@vercel/static-build` replaced by FastAPI-native static serving).
+- [x] Phase Two verification: ASGI import OK; backend tests **51 passed**; frontend production build **passed** (tsc + vite).
 - [x] Deployment status: **not completed** — blocked at credential/provisioning step (no Vercel auth / Neon credentials in execution environment).
+- [x] Prepared and pushed new public GitHub repository `FacultyFeedbackAnalysis` (remote `new-origin`) — commit `09fa15a`.
 - [x] Created/updated `PHASE_21_DEPLOYMENT_FINAL_REPORT.md`.
 
 ## Commands

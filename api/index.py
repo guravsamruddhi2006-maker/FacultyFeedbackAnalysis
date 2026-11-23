@@ -8,10 +8,10 @@ architecture is preserved.
 import sys
 from pathlib import Path
 
-_PROJECT_ROOT = Path(__file__).resolve().parents[1]
-_BACKEND_DIR = _PROJECT_ROOT / "backend"
-if str(_BACKEND_DIR) not in sys.path:
-    sys.path.insert(0, str(_BACKEND_DIR))
+_ProjectRoot = Path(__file__).resolve().parents[1]
+_BackendDir = _ProjectRoot / "backend"
+if str(_BackendDir) not in sys.path:
+    sys.path.insert(0, str(_BackendDir))
 
 from app.main import app  # noqa: E402,F401,F403
 

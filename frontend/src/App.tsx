@@ -6,7 +6,6 @@ import { ProtectedRoute, homeForRole } from "@/components/ProtectedRoute";
 import { AuthProvider, useAuth } from "@/context/AuthContext";
 import { ToastProvider } from "@/context/ToastContext";
 import { AdminSetupPage, LoginPage, RegisterPage } from "@/pages/AuthPages";
-import { AboutPage, LandingPage } from "@/pages/Public";
 import { Card, CardContent, LoadingBlock } from "@/components/ui";
 
 const AdminDashboard = lazy(() => import("@/pages/admin/AdminDashboard").then((module) => ({ default: module.AdminDashboard })));
@@ -14,6 +13,7 @@ const AdminManagement = lazy(() => import("@/pages/admin/AdminManagement").then(
 const FacultyDashboard = lazy(() => import("@/pages/faculty/FacultyDashboard").then((module) => ({ default: module.FacultyDashboard })));
 const FacultyCommentsPage = lazy(() => import("@/pages/faculty/FacultyDashboard").then((module) => ({ default: module.FacultyCommentsPage })));
 const FacultyProfile = lazy(() => import("@/pages/faculty/FacultyProfile").then((module) => ({ default: module.FacultyProfilePage })));
+const FacultySubjects = lazy(() => import("@/pages/faculty/FacultySubjects").then((module) => ({ default: module.FacultySubjectsPage })));
 const FeedbackFormPage = lazy(() => import("@/pages/student/FeedbackForm").then((module) => ({ default: module.FeedbackFormPage })));
 const StudentDashboard = lazy(() => import("@/pages/student/StudentDashboard").then((module) => ({ default: module.StudentDashboard })));
 
@@ -21,8 +21,7 @@ function HomeRedirect() {
   const { user, loading } = useAuth();
 
   if (loading) return <LoadingBlock label="Checking your session…" />;
-  if (user) return <Navigate to={homeForRole(user.role)} replace />;
-  return <LandingPage />;
+  return <Navigate to={user ? homeForRole(user.role) : "/login"} replace />;
 }
 
 function NotFoundPage() {
@@ -49,7 +48,6 @@ function AppRoutes() {
   return (
     <Routes>
       <Route path="/" element={<HomeRedirect />} />
-      <Route path="/about" element={<AboutPage />} />
       <Route path="/login" element={<LoginPage />} />
       <Route path="/register/student" element={<RegisterPage kind="student" />} />
       <Route path="/register/faculty" element={<RegisterPage kind="faculty" />} />
@@ -98,6 +96,14 @@ function AppRoutes() {
           }
         />
         <Route
+          path="/admin/admins"
+          element={
+            <ProtectedRoute roles={["admin"]}>
+              <AdminManagement section="admins" />
+            </ProtectedRoute>
+          }
+        />
+        <Route
           path="/admin/audit"
           element={
             <ProtectedRoute roles={["admin"]}>
@@ -110,6 +116,14 @@ function AppRoutes() {
           element={
             <ProtectedRoute roles={["faculty"]}>
               <FacultyDashboard />
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/faculty/subjects"
+          element={
+            <ProtectedRoute roles={["faculty"]}>
+              <FacultySubjects />
             </ProtectedRoute>
           }
         />

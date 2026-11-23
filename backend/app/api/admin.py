@@ -14,6 +14,7 @@ from app.schemas.admin import (
     FacultyStatusUpdate,
     StudentAdminCreate,
     StudentAdminUpdate,
+    SubjectRequestReview,
 )
 from app.schemas.common import MessageResponse
 from app.services.audit import write_audit
@@ -334,6 +335,145 @@ def admin_compare_faculty(
             semester_number=semester_number,
         ),
         "note": "Distinct faculty members are shown side by side; they are never merged as the same person.",
+    }
+
+
+@router.get("/subject-requests")
+def list_subject_requests(
+    status_filter: str | None = Query(default=None, alias="status"),
+    page: int = Query(default=1, ge=1),
+    page_size: int = Query(default=100, ge=1, le=100),
+    _: Principal = Depends(admin_required),
+    conn: Connection = Depends(get_db),
+):
+    clauses = ["TRUE"]
+    params: list = []
+    if status_filter:
+        if status_filter not in {"pending", "approved", "rejected"}:
+            raise HTTPException(status_code=422, detail="Unknown subject request status.")
+        clauses.append("sr.status = %s")
+        params.append(status_filter)
+    where = " AND ".join(clauses)
+    with conn.cursor() as cur:
+        cur.execute(f"SELECT COUNT(*)::int AS total FROM subject_requests sr WHERE {where}", params)
+        total = cur.fetchone()["total"]
+        cur.execute(
+            f"""
+            SELECT sr.request_id, sr.faculty_id, f.name AS faculty_name, f.email AS faculty_email,
+                   sr.subject_code, sr.subject_name, sr.semester_number, sr.status,
+                   sr.admin_note, sr.reviewed_by, a.name AS reviewed_by_name,
+                   sr.reviewed_at, sr.created_at,
+                   EXISTS (SELECT 1 FROM subjects s WHERE s.subject_code = sr.subject_code) AS in_catalog
+            FROM subject_requests sr
+            JOIN faculty f ON f.faculty_id = sr.faculty_id
+            LEFT JOIN admins a ON a.admin_id = sr.reviewed_by
+            WHERE {where}
+            ORDER BY CASE sr.status WHEN 'pending' THEN 0 ELSE 1 END,
+                     sr.created_at DESC, sr.request_id DESC
+            LIMIT %s OFFSET %s
+            """,
+            params + [page_size, (page - 1) * page_size],
+        )
+        items = list(cur.fetchall())
+    return {"items": items, "total": total, "page": page, "page_size": page_size}
+
+
+@router.patch("/subject-requests/{request_id}")
+def review_subject_request(
+    request_id: int,
+    payload: SubjectRequestReview,
+    request: Request,
+    current_user: Principal = Depends(admin_required),
+    conn: Connection = Depends(get_db),
+):
+    """Approve or reject a faculty subject request.
+
+    Approval only adds the subject to the official catalog. It never assigns the
+    subject to the requesting faculty member; they select it themselves.
+    """
+    try:
+        with conn.transaction():
+            with conn.cursor() as cur:
+                cur.execute(
+                    """
+                    SELECT request_id, faculty_id, subject_code, subject_name, semester_number, status
+                    FROM subject_requests WHERE request_id = %s FOR UPDATE
+                    """,
+                    (request_id,),
+                )
+                subject_request = cur.fetchone()
+                if subject_request is None:
+                    raise HTTPException(status_code=404, detail="Subject request not found.")
+                if subject_request["status"] != "pending":
+                    raise HTTPException(
+                        status_code=409,
+                        detail="This subject request has already been reviewed.",
+                    )
+
+                if payload.status == "approved":
+                    cur.execute(
+                        "SELECT subject_name, semester_number FROM subjects WHERE subject_code = %s",
+                        (subject_request["subject_code"],),
+                    )
+                    existing = cur.fetchone()
+                    if existing is not None:
+                        same_name = existing["subject_name"].strip().lower() == subject_request["subject_name"].strip().lower()
+                        same_semester = existing["semester_number"] == subject_request["semester_number"]
+                        if not (same_name and same_semester):
+                            raise HTTPException(
+                                status_code=409,
+                                detail="A different catalog subject already uses this subject code.",
+                            )
+                    else:
+                        cur.execute(
+                            """
+                            INSERT INTO subjects (subject_code, subject_name, semester_number)
+                            VALUES (%s, %s, %s)
+                            """,
+                            (
+                                subject_request["subject_code"],
+                                subject_request["subject_name"],
+                                subject_request["semester_number"],
+                            ),
+                        )
+
+                cur.execute(
+                    """
+                    UPDATE subject_requests
+                    SET status = %s, admin_note = %s, reviewed_by = %s,
+                        reviewed_at = CURRENT_TIMESTAMP
+                    WHERE request_id = %s
+                    RETURNING request_id, faculty_id, subject_code, subject_name,
+                              semester_number, status, admin_note, reviewed_by,
+                              reviewed_at, created_at
+                    """,
+                    (payload.status, payload.admin_note, int(current_user.id), request_id),
+                )
+                row = cur.fetchone()
+            write_audit(
+                conn,
+                current_user,
+                "subject_request.review",
+                entity_type="subject_request",
+                entity_id=request_id,
+                details={
+                    "status": payload.status,
+                    "subject_code": row["subject_code"],
+                },
+                request=request,
+            )
+    except UniqueViolation as exc:
+        raise HTTPException(
+            status_code=409,
+            detail="The catalog changed while this request was being approved. Review it again.",
+        ) from exc
+    return {
+        **row,
+        "message": (
+            "Subject approved and added to the official catalog. The faculty member can now select it."
+            if payload.status == "approved"
+            else "Subject request rejected."
+        ),
     }
 
 
