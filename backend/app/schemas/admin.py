@@ -110,6 +110,10 @@ class StudentAdminUpdate(BaseModel):
     department_id: int = Field(gt=0)
 
 
+class StudentStatusUpdate(BaseModel):
+    is_active: bool
+
+
 class FacultyAdminCreate(BaseModel):
     name: str = Field(min_length=2, max_length=120)
     email: Email

@@ -129,8 +129,8 @@ npx playwright test e2e/deep --workers=1
 ## 8. Database used
 
 - Isolated test database: `faculty_feedback_test` (backend env overrides: `DB_NAME=faculty_feedback_test`,
-  `DB_USER=postgres`, `DB_PASSWORD=sam@123`, `DB_HOST=localhost`, `DB_PORT=5432`,
-  `JWT_SECRET_KEY=deep-e2e-local-jwt-secret-1234`).
+  `DB_USER=postgres`, `DB_PASSWORD=<redacted-local-password>`, `DB_HOST=localhost`, `DB_PORT=5432`,
+  `JWT_SECRET_KEY=<redacted-local-test-secret>`).
 
 ## 9. Safety and compliance
 

@@ -11,6 +11,7 @@ Guarantees:
 * never assigns subjects to faculty automatically,
 * deactivates the rows that the earlier migration backfilled from existing
   course offerings, while keeping those offerings and their feedback intact,
+* adds the reversible student archive flag without changing existing accounts,
 * records applied corrections in ``schema_migrations`` so each correction runs
   at most once,
 * takes a transaction-scoped advisory lock so concurrent cold starts cannot
@@ -33,6 +34,8 @@ _schema_ready = False
 _REQUIRED_TABLES = ("faculty_subject_selections", "subject_requests")
 
 _BACKFILL_CORRECTION = "003_deactivate_backfilled_selections"
+
+_STUDENT_ACTIVE_SUPPORT = "004_student_archive_support"
 
 _SCHEMA_SQL = """
 CREATE TABLE IF NOT EXISTS faculty_subject_selections (
@@ -128,6 +131,25 @@ VALUES ('{_BACKFILL_CORRECTION}')
 ON CONFLICT (version) DO NOTHING;
 """
 
+# Reversible archive support for student accounts. The flag is additive and
+# defaults to TRUE, so existing students keep working until an administrator
+# explicitly archives them.
+_STUDENT_ACTIVE_SQL = f"""
+CREATE TABLE IF NOT EXISTS schema_migrations (
+    version     VARCHAR(80) PRIMARY KEY,
+    applied_at  TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+
+ALTER TABLE students
+    ADD COLUMN IF NOT EXISTS is_active BOOLEAN NOT NULL DEFAULT TRUE;
+
+CREATE INDEX IF NOT EXISTS idx_students_active ON students(is_active);
+
+INSERT INTO schema_migrations (version)
+VALUES ('{_STUDENT_ACTIVE_SUPPORT}')
+ON CONFLICT (version) DO NOTHING;
+"""
+
 
 def _tables_present(conn: psycopg.Connection) -> bool:
     with conn.cursor() as cur:
@@ -139,15 +161,17 @@ def _tables_present(conn: psycopg.Connection) -> bool:
     return bool(row and row["selections"] and row["requests"])
 
 
-def _correction_applied(conn: psycopg.Connection) -> bool:
+def _migration_applied(conn: psycopg.Connection, version: str) -> bool:
     with conn.cursor() as cur:
         cur.execute("SELECT to_regclass('public.schema_migrations') AS table")
         if cur.fetchone()["table"] is None:
             return False
-        cur.execute(
-            "SELECT 1 FROM schema_migrations WHERE version = %s", (_BACKFILL_CORRECTION,)
-        )
+        cur.execute("SELECT 1 FROM schema_migrations WHERE version = %s", (version,))
         return cur.fetchone() is not None
+
+
+def _correction_applied(conn: psycopg.Connection) -> bool:
+    return _migration_applied(conn, _BACKFILL_CORRECTION)
 
 
 def ensure_runtime_schema() -> None:
@@ -184,6 +208,15 @@ def ensure_runtime_schema() -> None:
                     cur.execute(_CORRECTION_SQL)
             conn.commit()
             logger.info("Deactivated automatically backfilled faculty selections.")
+
+        if not _migration_applied(conn, _STUDENT_ACTIVE_SUPPORT):
+            conn.rollback()
+            with conn.transaction():
+                with conn.cursor() as cur:
+                    cur.execute("SELECT pg_advisory_xact_lock(hashtext('facultyinsight_schema_004'))")
+                    cur.execute(_STUDENT_ACTIVE_SQL)
+            conn.commit()
+            logger.info("Added the reversible student archive flag.")
 
         _schema_ready = True
     except psycopg.Error:

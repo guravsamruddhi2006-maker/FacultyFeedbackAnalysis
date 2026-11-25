@@ -81,6 +81,7 @@ export interface StudentRow {
   department_name?: string;
   created_at?: string;
   feedback_count?: number;
+  is_active?: boolean;
 }
 
 export interface Offering {

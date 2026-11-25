@@ -15,7 +15,10 @@
 
 - Backend role dependencies enforce `admin`, `faculty`, `student` per endpoint.
 - There is no public administrator registration. The first administrator is created once through the initial setup; later administrators are created by an authenticated administrator.
+- Administrator and faculty identities live in separate tables with separate login endpoints. The same email can therefore be an administrator and a pending faculty registration without either role being changed silently.
 - Only administrators can approve, reject or deactivate faculty accounts.
+- Only administrators can archive or restore student accounts. Archiving keeps the row, historical feedback and audit logs, but rejects new logins and invalidates already-issued tokens on their next request.
+- Operator recovery never reopens public registration. Database-level recovery is available through `app.recover_admin`; when database credentials are unavailable, an existing administrator can change a password through the hidden-prompt `app.scripts.set_production_admin_password` tool.
 - Faculty data scope is derived from the JWT subject; request input cannot widen scope.
 - Students can only access their own feedback records.
 - Faculty can only view their own aggregated feedback.

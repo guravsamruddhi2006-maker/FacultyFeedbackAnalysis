@@ -238,6 +238,30 @@ function StudentManagement() {
     `${item.name} ${item.student_id} ${item.department_name ?? ""}`.toLowerCase().includes(search.toLowerCase()),
   );
 
+  const toggleActive = async (item: StudentRow) => {
+    const nextActive = !item.is_active;
+    const confirmed = window.confirm(
+      nextActive
+        ? `Restore access for ${item.name} (${item.student_id})?`
+        : `Archive ${item.name} (${item.student_id})? They are signed out immediately and cannot sign in until restored. Feedback and audit history are preserved.`,
+    );
+    if (!confirmed) return;
+    const ok = await run(
+      () => api(`/admin/students/${encodeURIComponent(item.student_id)}/status`, {
+        method: "PATCH",
+        body: { is_active: nextActive },
+      }),
+      nextActive ? "Student account restored." : "Student account archived.",
+    );
+    if (ok) {
+      if (!nextActive) {
+        setEditingStudent((current) => (current?.student_id === item.student_id ? null : current));
+        setSelectedStudent((current) => (current === item.student_id ? null : current));
+      }
+      students.reload();
+    }
+  };
+
   return (
     <div className="space-y-6">
       <PageHeader
@@ -315,8 +339,15 @@ function StudentManagement() {
             <thead><tr><Th>Student ID</Th><Th>Name</Th><Th>Department</Th><Th>Submissions</Th><Th className="text-right">Actions</Th></tr></thead>
             <tbody>{filtered.map((item) => (
               <tr key={item.student_id}>
-                <Td>{item.student_id}</Td><Td>{item.name}</Td><Td>{item.department_name}</Td><Td>{item.feedback_count ?? 0}</Td>
-                <Td><div className="flex justify-end gap-2"><Button size="sm" variant="outline" onClick={() => setEditingStudent(item)} icon={<Pencil className="h-3.5 w-3.5" />}>Edit</Button><Button size="sm" variant="outline" onClick={() => setSelectedStudent(item.student_id)}>View submissions</Button></div></Td>
+                <Td>{item.student_id}</Td>
+                <Td>
+                  <div className="flex flex-wrap items-center gap-2">
+                    <span>{item.name}</span>
+                    {item.is_active === false ? <Badge variant="warning">Archived</Badge> : null}
+                  </div>
+                </Td>
+                <Td>{item.department_name}</Td><Td>{item.feedback_count ?? 0}</Td>
+                <Td><div className="flex flex-wrap justify-end gap-2"><Button size="sm" variant="outline" onClick={() => setEditingStudent(item)} icon={<Pencil className="h-3.5 w-3.5" />}>Edit</Button><Button size="sm" variant="outline" onClick={() => setSelectedStudent(item.student_id)}>View submissions</Button><Button size="sm" variant={item.is_active === false ? "secondary" : "outline"} onClick={() => toggleActive(item)}>{item.is_active === false ? "Restore" : "Archive"}</Button></div></Td>
               </tr>
             ))}</tbody>
           </Table>

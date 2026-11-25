@@ -74,12 +74,42 @@ python -m app.recover_admin --email admin@college.edu --name "Administrator"
 python -m app.recover_admin --email admin@college.edu --reset   # explicit RESET confirmation
 ```
 
+- Production password recovery when database credentials are not available: sign in
+  with an existing administrator in the dashboard, then run the hidden-prompt tool:
+
+```bash
+cd backend
+python -m app.scripts.set_production_admin_password --email admin@college.edu
+```
+
+  The tool reads a temporary password from `~/.facultyinsight-admin-recovery.txt` when
+  present, prompts for the new password with `getpass`, verifies the new login against
+  production, and deletes the temporary file on success.
+
+- Administrator and faculty identities are stored in separate tables. The same email may
+  therefore be an active administrator and a pending faculty registration at the same
+  time. The two logins are independent, and no role is changed silently. An administrator
+  can reject the separate faculty registration from **Faculty management** if it is not
+  wanted.
+
 ## 7. Demo data
 
 ```bash
 cd backend
 .venv\Scripts\python.exe -m app.scripts.seed_demo --with-feedback
 ```
+
+## 7a. Archiving accounts
+
+Administrators can archive or restore a student from **Student management** without
+deleting anything. An archived student is signed out immediately, cannot sign in again,
+and disappears from the active student workflow, while their historical feedback, audit
+logs and database relationships remain intact. Faculty accounts are deactivated through
+**Faculty management**, and administrator accounts through **Administrator management**;
+neither is ever deleted when access is withdrawn.
+
+Archiving is reversible: restoring the account allows the same USN and password to sign in
+again.
 
 ## 8. Running tests
 

@@ -354,3 +354,65 @@ def test_only_admin_can_create_administrator_accounts(
     assert login.status_code == 200, login.text
     assert login.json()["user"]["email"] == "another-admin@test.local"
 
+
+def test_admin_can_archive_and_restore_student(
+    client: TestClient,
+    data: dict,
+    admin_headers: dict,
+    student_headers: dict,
+) -> None:
+    student_id = data["student_id"]
+    endpoint = f"/api/admin/students/{student_id}/status"
+
+    # The account works before archiving.
+    assert client.get("/api/auth/me", headers=student_headers).status_code == 200
+
+    archived = client.patch(endpoint, headers=admin_headers, json={"is_active": False})
+    assert archived.status_code == 200, archived.text
+    assert archived.json()["is_active"] is False
+
+    # An already-issued token is rejected on the next request because every
+    # protected request re-checks the database flag.
+    assert client.get("/api/auth/me", headers=student_headers).status_code == 401
+    assert client.get("/api/students/me/dashboard", headers=student_headers).status_code == 401
+
+    blocked_login = client.post(
+        "/api/auth/student/login",
+        json={"student_id": student_id, "password": TEST_PASSWORD},
+    )
+    assert blocked_login.status_code == 403
+    assert "inactive" in blocked_login.json()["detail"].lower()
+
+    listed = client.get("/api/admin/students?page_size=100", headers=admin_headers).json()
+    row = next(item for item in listed["items"] if item["student_id"] == student_id)
+    assert row["is_active"] is False
+
+    restored = client.patch(endpoint, headers=admin_headers, json={"is_active": True})
+    assert restored.status_code == 200, restored.text
+    assert restored.json()["is_active"] is True
+
+    login_again = client.post(
+        "/api/auth/student/login",
+        json={"student_id": student_id, "password": TEST_PASSWORD},
+    )
+    assert login_again.status_code == 200, login_again.text
+
+
+def test_only_admin_can_archive_students(
+    client: TestClient,
+    data: dict,
+    admin_headers: dict,
+    faculty_a_headers: dict,
+    student_headers: dict,
+) -> None:
+    endpoint = f"/api/admin/students/{data['student_id']}/status"
+    payload = {"is_active": False}
+
+    assert client.patch(endpoint, json=payload).status_code == 401
+    assert client.patch(endpoint, headers=student_headers, json=payload).status_code == 403
+    assert client.patch(endpoint, headers=faculty_a_headers, json=payload).status_code == 403
+
+    listed = client.get("/api/admin/students?page_size=100", headers=admin_headers).json()
+    row = next(item for item in listed["items"] if item["student_id"] == data["student_id"])
+    assert row["is_active"] is True
+

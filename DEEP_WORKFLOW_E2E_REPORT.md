@@ -96,8 +96,8 @@ Deep E2E focused run: `npx playwright test e2e/deep --workers=1` → **8 passed,
 
 - **Isolated test database**: `faculty_feedback_test`
 - Backend runtime env overrides used for deep E2E:
-  `DB_NAME=faculty_feedback_test`, `DB_USER=postgres`, `DB_PASSWORD=sam@123`, `DB_HOST=localhost`,
-  `DB_PORT=5432`, `JWT_SECRET_KEY=deep-e2e-local-jwt-secret-1234`
+  `DB_NAME=faculty_feedback_test`, `DB_USER=postgres`, `DB_PASSWORD=<redacted-local-password>`, `DB_HOST=localhost`,
+  `DB_PORT=5432`, `JWT_SECRET_KEY=<redacted-local-test-secret>`
 - `/health` and `/health/db` returned 200 during deep runs.
 
 ## 7. Test accounts exercised (isolated test database)

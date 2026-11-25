@@ -1,18 +1,45 @@
+# Environment secrets
 .env
+.env.*
+!.env.example
 **/.env
+**/.env.*
+!**/.env.example
+
+# Vercel
+.vercel/
+.vercel
+
+# Dependencies
+node_modules/
+**/node_modules/
 .venv/
 **/.venv/
-__pycache__/
-*.pyc
 frontend/node_modules/
 frontend/dist/
+
+# Python cache
+__pycache__/
+*.py[cod]
+backend/.pytest_cache/
+
+# Production database backups
+database/backups/
+**/*.sql.backup
+**/*.dump
+database/*backup*.sql
+
+# Local temporary files
+*.log
+*.tmp
+playwright-report/
+test-results/
 frontend/playwright-report/
 frontend/test-results/
 backend/backend_run.log
-backend/.pytest_cache/
-database/backups/
-database/*backup*.sql
 frontend/tsconfig.tsbuildinfo
 test_db.py
 
-.vercel
+# Local production verification scripts (contain temporary test credentials)
+frontend/prod_*_verify.mjs
+frontend/debug_*.mjs

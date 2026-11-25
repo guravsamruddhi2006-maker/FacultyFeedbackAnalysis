@@ -14,6 +14,7 @@ from app.schemas.admin import (
     FacultyStatusUpdate,
     StudentAdminCreate,
     StudentAdminUpdate,
+    StudentStatusUpdate,
     SubjectRequestReview,
 )
 from app.schemas.common import MessageResponse
@@ -160,12 +161,12 @@ def list_students(
         cur.execute(
             f"""
             SELECT s.student_id, s.name, s.department_id, d.name AS department_name,
-                   s.created_at, COUNT(fb.feedback_id)::int AS feedback_count
+                   s.created_at, s.is_active, COUNT(fb.feedback_id)::int AS feedback_count
             FROM students s
             JOIN departments d ON d.id = s.department_id
             LEFT JOIN feedback fb ON fb.student_id = s.student_id
             WHERE {where}
-            GROUP BY s.student_id, s.name, s.department_id, d.name, s.created_at
+            GROUP BY s.student_id, s.name, s.department_id, d.name, s.created_at, s.is_active
             ORDER BY s.student_id
             LIMIT %s OFFSET %s
             """,
@@ -248,6 +249,54 @@ def update_student_as_admin(
     return row
 
 
+@router.patch("/students/{student_id}/status")
+def update_student_status(
+    student_id: str,
+    payload: StudentStatusUpdate,
+    request: Request,
+    current_user: Principal = Depends(admin_required),
+    conn: Connection = Depends(get_db),
+):
+    """Archive or restore a student account without deleting history.
+
+    Archiving only flips ``is_active``: feedback, audit logs and foreign-key
+    relationships are preserved, and every protected request re-checks the flag,
+    so existing tokens stop working immediately.
+    """
+    normalized_id = normalize_usn(student_id)
+    with conn.transaction():
+        with conn.cursor() as cur:
+            cur.execute(
+                """
+                UPDATE students
+                SET is_active = %s
+                WHERE student_id = %s
+                RETURNING student_id, name, is_active
+                """,
+                (payload.is_active, normalized_id),
+            )
+            row = cur.fetchone()
+            if row is None:
+                raise HTTPException(status_code=404, detail="Student not found.")
+        write_audit(
+            conn,
+            current_user,
+            "student.status_update",
+            entity_type="student",
+            entity_id=normalized_id,
+            details={"is_active": payload.is_active},
+            request=request,
+        )
+    return {
+        **row,
+        "message": (
+            "Student account restored."
+            if payload.is_active
+            else "Student account archived. Existing sessions were invalidated."
+        ),
+    }
+
+
 @router.get("/students/{student_id}")
 def get_student_detail(
     student_id: str,
@@ -258,7 +307,8 @@ def get_student_detail(
     with conn.cursor() as cur:
         cur.execute(
             """
-            SELECT s.student_id, s.name, s.department_id, d.name AS department_name, s.created_at
+            SELECT s.student_id, s.name, s.department_id, d.name AS department_name,
+                   s.created_at, s.is_active
             FROM students s JOIN departments d ON d.id = s.department_id
             WHERE s.student_id = %s
             """,

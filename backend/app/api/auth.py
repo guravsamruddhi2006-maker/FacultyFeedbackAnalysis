@@ -217,7 +217,8 @@ def register_student(payload: StudentRegister, conn: Connection = Depends(get_db
 def student_login(payload: StudentLogin, request: Request, conn: Connection = Depends(get_db)):
     with conn.cursor() as cur:
         cur.execute(
-            "SELECT student_id, name, department_id, password_hash FROM students WHERE student_id = %s",
+            "SELECT student_id, name, department_id, password_hash, is_active "
+            "FROM students WHERE student_id = %s",
             (normalize_usn(payload.student_id),),
         )
         student = cur.fetchone()
@@ -230,6 +231,11 @@ def student_login(payload: StudentLogin, request: Request, conn: Connection = De
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Incorrect password. Please try again.",
+        )
+    if not student["is_active"]:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="This student account is inactive. Contact the administrator to restore it.",
         )
     login_rate_limiter.reset(request)
     return _token_response(

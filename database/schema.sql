@@ -40,6 +40,7 @@ CREATE TABLE IF NOT EXISTS students (
     name            VARCHAR(120) NOT NULL,
     department_id   INTEGER NOT NULL REFERENCES departments(id) ON UPDATE CASCADE ON DELETE RESTRICT,
     password_hash   VARCHAR(255) NOT NULL,
+    is_active       BOOLEAN NOT NULL DEFAULT TRUE,
     created_at      TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
     CONSTRAINT students_usn_check CHECK (student_id ~ '^[A-Za-z0-9]{6,50}$')
 );
@@ -145,6 +146,7 @@ CREATE TABLE IF NOT EXISTS audit_logs (
 );
 
 CREATE INDEX IF NOT EXISTS idx_faculty_status ON faculty(status);
+CREATE INDEX IF NOT EXISTS idx_students_active ON students(is_active);
 CREATE INDEX IF NOT EXISTS idx_course_offerings_faculty ON course_offerings(faculty_id);
 CREATE INDEX IF NOT EXISTS idx_course_offerings_scope ON course_offerings(academic_year, semester_number, subject_code);
 CREATE INDEX IF NOT EXISTS idx_faculty_selections_faculty ON faculty_subject_selections(faculty_id, is_active);

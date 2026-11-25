@@ -75,12 +75,14 @@ def get_current_user(
                 department_id=row["department_id"],
             )
         cur.execute(
-            "SELECT student_id, name, department_id FROM students WHERE student_id = %s",
+            "SELECT student_id, name, department_id, is_active FROM students WHERE student_id = %s",
             (subject,),
         )
         row = cur.fetchone()
         if row is None:
             raise _unauthorized("Student account no longer exists.")
+        if not row["is_active"]:
+            raise _unauthorized("Student account is inactive or archived.")
         return Principal(
             id=row["student_id"],
             role=role,
