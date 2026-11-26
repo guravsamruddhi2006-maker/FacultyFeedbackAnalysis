@@ -14,6 +14,7 @@ All calculations are derived from aggregated database answers and anonymised com
 
 ### Default engine — `lexicon-v1` (transparent baseline)
 
+
 - Tokenisation with stopword removal.
 
 - Lexicon scoring with positive/negative word lists.
