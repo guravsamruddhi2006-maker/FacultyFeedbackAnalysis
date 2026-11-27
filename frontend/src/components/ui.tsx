@@ -380,7 +380,7 @@ type ButtonVariant = "primary" | "secondary" | "outline" | "ghost" | "destructiv
 type ButtonSize = "sm" | "md" | "lg" | "icon";
 
 const buttonVariants: Record<ButtonVariant, string> = {
-  primary: "bg-primary text-primary-foreground hover:bg-blue-700 shadow-sm",
+  primary: "bg-primary text-primary-foreground hover:bg-[hsl(222_47%_14%)] shadow-sm",
   secondary: "bg-secondary text-secondary-foreground hover:bg-slate-200",
   outline: "border border-input bg-white hover:bg-slate-50",
   ghost: "hover:bg-slate-100 text-slate-700",
@@ -583,7 +583,7 @@ const badgeVariants: Record<BadgeVariant, string> = {
   success: "bg-emerald-100 text-emerald-700",
   warning: "bg-amber-100 text-amber-800",
   danger: "bg-red-100 text-red-700",
-  info: "bg-blue-100 text-blue-700",
+  info: "bg-teal-100 text-teal-800",
   outline: "border border-slate-200 text-slate-600",
 };
 
@@ -616,7 +616,7 @@ export function Alert({
   className?: string;
 }) {
   const styles = {
-    info: "border-blue-200 bg-blue-50 text-blue-800",
+    info: "border-teal-200 bg-teal-50 text-teal-900",
     error: "border-red-200 bg-red-50 text-red-800",
     success: "border-emerald-200 bg-emerald-50 text-emerald-800",
     warning: "border-amber-200 bg-amber-50 text-amber-900",
@@ -692,10 +692,10 @@ export function StatCard({
   tone?: "blue" | "emerald" | "amber" | "violet" | "slate";
 }) {
   const tones = {
-    blue: "bg-blue-50 text-blue-600",
-    emerald: "bg-emerald-50 text-emerald-600",
-    amber: "bg-amber-50 text-amber-600",
-    violet: "bg-violet-50 text-violet-600",
+    blue: "bg-teal-50 text-teal-700",
+    emerald: "bg-emerald-50 text-emerald-700",
+    amber: "bg-amber-50 text-amber-700",
+    violet: "bg-slate-100 text-primary",
     slate: "bg-slate-100 text-slate-600",
   }[tone];
 

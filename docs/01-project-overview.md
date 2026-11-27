@@ -105,7 +105,7 @@ Accuracy matters for a viva and for future maintainers. The project does **not**
 - Real-time chat, email notifications or SMS.
 - Multi-department tenancy. The catalog seeds one department and the product is designed around it.
 - Automatic faculty-to-subject assignment. Faculty choose their own subjects; administrators approve requests but do not assign teaching loads.
-- A mobile app or offline mode.
+- A native mobile app or offline data entry. The web app is installable as a PWA with an offline shell, but feedback, rosters and reports always require a live connection.
 
 These boundaries are documented again in [20 — Known Limitations](./20-known-limitations.md).
 

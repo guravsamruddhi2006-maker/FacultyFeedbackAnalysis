@@ -20,6 +20,7 @@ from app.schemas.faculty import (
     SubjectRequestCreate,
 )
 from app.services.audit import write_audit
+from app.services.completion_service import CompletionScopeNotFound, get_completion
 
 
 router = APIRouter(prefix="/faculty/me", tags=["Faculty"])
@@ -187,6 +188,32 @@ def faculty_dashboard(
         semester_number=semester_number,
         subject_code=subject_code,
     )
+
+
+@router.get("/completion")
+def faculty_completion(
+    subject_code: str = Query(min_length=2, max_length=20),
+    academic_year: str = Query(pattern=r"^[0-9]{4}-[0-9]{2}$"),
+    semester_number: int = Query(ge=1, le=8),
+    current_user: Principal = Depends(faculty_required),
+    conn: Connection = Depends(get_db),
+):
+    """Completion status for one of the authenticated faculty member's subjects.
+
+    The faculty ID always comes from the JWT. The result is based on the verified
+    roster and never includes feedback content, ratings or student-linked
+    feedback identifiers.
+    """
+    try:
+        return get_completion(
+            conn,
+            int(current_user.id),
+            subject_code=subject_code.strip().upper(),
+            academic_year=academic_year,
+            semester_number=semester_number,
+        )
+    except CompletionScopeNotFound as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
 
 
 @router.get("/comments")

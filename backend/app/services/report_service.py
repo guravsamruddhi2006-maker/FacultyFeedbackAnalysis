@@ -13,6 +13,7 @@ from reportlab.lib.units import mm
 from reportlab.platypus import PageBreak, Paragraph, SimpleDocTemplate, Spacer, Table, TableStyle
 
 from app.analytics.service import admin_dashboard, faculty_dashboard
+from app.services.completion_service import RosterUnavailable, get_completion
 
 
 def _safe(value: Any) -> str:
@@ -84,6 +85,150 @@ def build_admin_report(
     if fmt == "csv":
         return _admin_csv(data, filters), "text/csv; charset=utf-8", filename
     return _admin_pdf(data, filters), "application/pdf", filename
+
+
+def build_completion_report(
+    conn,
+    faculty_id: int,
+    *,
+    subject_code: str,
+    academic_year: str,
+    semester_number: int,
+) -> tuple[bytes, str, str]:
+    """Build the pending-student PDF from the verified roster only."""
+    data = get_completion(
+        conn,
+        faculty_id,
+        subject_code=subject_code,
+        academic_year=academic_year,
+        semester_number=semester_number,
+    )
+    if not data["roster_available"]:
+        raise RosterUnavailable(
+            "No verified class roster exists for this subject, academic year and semester. "
+            "An administrator must add the enrolled students before a pending list can be exported."
+        )
+
+    with conn.cursor() as cur:
+        cur.execute("SELECT name FROM faculty WHERE faculty_id = %s", (faculty_id,))
+        faculty = cur.fetchone() or {}
+    faculty_name = faculty.get("name") or "Faculty"
+
+    period = data.get("period")
+    if period and period.get("start_date") and period.get("end_date"):
+        period_text = f"{period['start_date'][:10]} to {period['end_date'][:10]}"
+        period_text += " (open)" if period.get("is_open") else " (closed)"
+    else:
+        period_text = "Not configured"
+
+    stamp = datetime.now().strftime("%Y%m%d-%H%M")
+    filename = (
+        f"feedback-completion-{data['subject_code']}-{academic_year}-"
+        f"sem-{semester_number}-{stamp}.pdf"
+    )
+
+    styles = _styles()
+    buffer = io.BytesIO()
+    doc = SimpleDocTemplate(
+        buffer,
+        pagesize=A4,
+        leftMargin=18 * mm,
+        rightMargin=18 * mm,
+        topMargin=18 * mm,
+        bottomMargin=20 * mm,
+    )
+    story: list[Any] = [
+        Paragraph("FacultyInsight AI", styles["Title"]),
+        Paragraph("Student Feedback Completion Report", styles["Heading1"]),
+        Paragraph(_safe(f"Faculty: {faculty_name}"), styles["Normal"]),
+        Paragraph(
+            _safe(f"Subject: {data['subject_code']} - {data['subject_name']}"),
+            styles["Normal"],
+        ),
+        Paragraph(
+            _safe(
+                f"Academic year: {data['academic_year']} | Semester: {data['semester_number']}"
+            ),
+            styles["Normal"],
+        ),
+        Paragraph(_safe(f"Feedback period: {period_text}"), styles["SmallMuted"]),
+        Paragraph(
+            _safe(f"Generated: {datetime.now().strftime('%d %b %Y, %H:%M')}"),
+            styles["SmallMuted"],
+        ),
+        Spacer(1, 8),
+    ]
+
+    summary = Table(
+        [
+            ["Eligible students", "Submitted", "Pending", "Completion"],
+            [
+                data["eligible_count"],
+                data["submitted_count"],
+                data["pending_count"],
+                f"{data['completion_percentage']:.1f}%",
+            ],
+        ],
+        colWidths=[45 * mm, 38 * mm, 38 * mm, 45 * mm],
+    )
+    summary.setStyle(
+        TableStyle(
+            [
+                ("BACKGROUND", (0, 0), (-1, 0), colors.HexColor("#0f766e")),
+                ("TEXTCOLOR", (0, 0), (-1, 0), colors.white),
+                ("FONTNAME", (0, 0), (-1, 0), "Helvetica-Bold"),
+                ("FONTSIZE", (0, 0), (-1, -1), 10),
+                ("GRID", (0, 0), (-1, -1), 0.3, colors.HexColor("#99f6e4")),
+                ("TOPPADDING", (0, 0), (-1, -1), 7),
+                ("BOTTOMPADDING", (0, 0), (-1, -1), 7),
+            ]
+        )
+    )
+    story.extend(
+        [
+            summary,
+            Paragraph("Pending students", styles["SectionTitle"]),
+            Paragraph(
+                _safe(
+                    "The students below are on the verified roster and have not submitted "
+                    "feedback for this subject and period."
+                ),
+                styles["SmallMuted"],
+            ),
+        ]
+    )
+    if data["pending_students"]:
+        story.append(
+            _table(
+                [["USN", "Student name"]]
+                + [
+                    [row["student_id"], row["name"]]
+                    for row in data["pending_students"]
+                ],
+                [55 * mm, 105 * mm],
+            )
+        )
+    else:
+        story.append(
+            Paragraph(
+                "All students on the verified roster have submitted feedback for this scope.",
+                styles["Normal"],
+            )
+        )
+
+    story.append(Paragraph("Privacy and scope", styles["SectionTitle"]))
+    story.append(Paragraph(_safe(data["privacy_notice"]), styles["SmallMuted"]))
+    story.append(Paragraph(_safe(data["methodology"]), styles["SmallMuted"]))
+    story.append(
+        Paragraph(
+            "This report contains completion status only. It contains no ratings, comments, "
+            "sentiment results or internal feedback identifiers.",
+            styles["SmallMuted"],
+        )
+    )
+
+    doc.build(story, onFirstPage=_footer, onLaterPages=_footer)
+    return buffer.getvalue(), "application/pdf", filename
 
 
 def _faculty_csv(data: dict[str, Any], faculty: dict[str, Any]) -> bytes:

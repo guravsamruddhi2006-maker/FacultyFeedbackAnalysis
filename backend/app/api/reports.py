@@ -2,13 +2,18 @@ from __future__ import annotations
 
 from urllib.parse import quote
 
-from fastapi import APIRouter, Depends, Query
+from fastapi import APIRouter, Depends, HTTPException, Query
 from fastapi.responses import Response
 from psycopg import Connection
 
 from app.core.deps import Principal, admin_required, faculty_required
 from app.db import get_db
-from app.services.report_service import build_admin_report, build_faculty_report
+from app.services.completion_service import CompletionScopeNotFound, RosterUnavailable
+from app.services.report_service import (
+    build_admin_report,
+    build_completion_report,
+    build_faculty_report,
+)
 
 
 router = APIRouter(prefix="/reports", tags=["Reports"])
@@ -44,6 +49,32 @@ def faculty_report(
     )
     # The report builder re-queries the profile for the heading; ensure a name is present.
     _ = faculty
+    return _response(content, media_type, filename)
+
+
+@router.get("/faculty/me/completion")
+def faculty_completion_report(
+    format: str = Query(default="pdf", pattern="^pdf$"),
+    subject_code: str = Query(min_length=2, max_length=20),
+    academic_year: str = Query(pattern=r"^[0-9]{4}-[0-9]{2}$"),
+    semester_number: int = Query(ge=1, le=8),
+    current_user: Principal = Depends(faculty_required),
+    conn: Connection = Depends(get_db),
+):
+    """Download the pending-student PDF for one owned subject and period."""
+    try:
+        content, media_type, filename = build_completion_report(
+            conn,
+            int(current_user.id),
+            subject_code=subject_code.strip().upper(),
+            academic_year=academic_year,
+            semester_number=semester_number,
+        )
+    except CompletionScopeNotFound as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    except RosterUnavailable as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+    _ = format
     return _response(content, media_type, filename)
 
 

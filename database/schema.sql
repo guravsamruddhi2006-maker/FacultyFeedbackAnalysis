@@ -79,6 +79,19 @@ CREATE TABLE IF NOT EXISTS faculty_subject_selections (
     CONSTRAINT faculty_subject_selections_unique UNIQUE (faculty_id, subject_code, academic_year, semester_number)
 );
 
+-- Administrator-maintained class roster. Completion tracking must never infer
+-- eligibility from every registered student: only students an administrator has
+-- verified as enrolled in this subject, academic year and semester count.
+CREATE TABLE IF NOT EXISTS student_enrollments (
+    enrollment_id   SERIAL PRIMARY KEY,
+    student_id      VARCHAR(50) NOT NULL REFERENCES students(student_id) ON UPDATE CASCADE ON DELETE CASCADE,
+    subject_code    VARCHAR(20) NOT NULL REFERENCES subjects(subject_code) ON UPDATE CASCADE ON DELETE RESTRICT,
+    academic_year   VARCHAR(9) NOT NULL REFERENCES academic_years(academic_year) ON UPDATE CASCADE ON DELETE RESTRICT,
+    semester_number INTEGER NOT NULL REFERENCES semesters(semester_number) ON UPDATE CASCADE ON DELETE RESTRICT,
+    created_at      TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    CONSTRAINT student_enrollments_unique UNIQUE (student_id, subject_code, academic_year, semester_number)
+);
+
 -- Faculty may request a subject that is missing from the official catalog.
 -- A request only becomes a catalog subject after administrator approval.
 CREATE TABLE IF NOT EXISTS subject_requests (
@@ -151,6 +164,8 @@ CREATE INDEX IF NOT EXISTS idx_course_offerings_faculty ON course_offerings(facu
 CREATE INDEX IF NOT EXISTS idx_course_offerings_scope ON course_offerings(academic_year, semester_number, subject_code);
 CREATE INDEX IF NOT EXISTS idx_faculty_selections_faculty ON faculty_subject_selections(faculty_id, is_active);
 CREATE INDEX IF NOT EXISTS idx_faculty_selections_scope ON faculty_subject_selections(academic_year, semester_number, subject_code, is_active);
+CREATE INDEX IF NOT EXISTS idx_student_enrollments_scope ON student_enrollments(subject_code, academic_year, semester_number);
+CREATE INDEX IF NOT EXISTS idx_student_enrollments_student ON student_enrollments(student_id);
 CREATE UNIQUE INDEX IF NOT EXISTS idx_subject_requests_pending_code
     ON subject_requests(subject_code) WHERE status = 'pending';
 CREATE INDEX IF NOT EXISTS idx_subject_requests_faculty ON subject_requests(faculty_id, created_at DESC);

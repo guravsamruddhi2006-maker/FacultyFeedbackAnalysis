@@ -255,11 +255,16 @@ Rules enforced by the server:
 | `GET` | `/filter-options` | Faculty | Available filters |
 | `GET` | `/sentiment` | Faculty | Sentiment breakdown |
 | `GET` | `/selections` | Faculty | Own teaching selections |
+| `GET` | `/completion` | Faculty | Own subject completion counts and pending students |
 | `POST` | `/selections` | Faculty | Add a selection |
 | `PUT` | `/selections/{id}` | Faculty | Edit a selection |
 | `DELETE` | `/selections/{id}` | Faculty | Deactivate a selection |
 | `GET` | `/subject-requests` | Faculty | Own subject requests |
 | `POST` | `/subject-requests` | Faculty | Request a new subject |
+
+### `GET /faculty/me/completion`
+
+Requires `subject_code`, `academic_year` (`YYYY-YY`) and `semester_number`. Faculty ownership comes from the JWT and an active selection; the endpoint never accepts a faculty ID. It returns aggregate counts, the feedback period and pending students only. There are no ratings, comments or feedback IDs. An empty verified roster returns `roster_available: false`; a scope the faculty member does not teach returns `404`.
 
 ### `POST /faculty/me/selections`
 
@@ -292,6 +297,10 @@ Deactivates the selection. If the linked offering has no feedback it is removed;
 | `PATCH` | `/students/{id}` | Admin | Edit student details |
 | `PATCH` | `/students/{id}/status` | Admin | Activate/deactivate |
 | `GET` | `/students/{id}` | Admin | Student submission metadata (no feedback text/ratings) |
+| `GET` | `/enrollments` | Admin | Verified roster for one subject/year/semester |
+| `POST` | `/enrollments` | Admin | Add one active student to a roster |
+| `POST` | `/enrollments/bulk` | Admin | Add up to 500 USNs, reporting unknown/archived/duplicates |
+| `DELETE` | `/enrollments/{id}` | Admin | Remove a roster row without touching feedback |
 | `GET` | `/analytics/faculty/{id}` | Admin | Analytics for one faculty |
 | `GET` | `/analytics/faculty-comparison` | Admin | Compare faculty |
 | `GET` | `/subject-requests` | Admin | Pending/all requests |
@@ -315,6 +324,10 @@ Allowed values: `approved`, `rejected`, `inactive`.
 ```
 
 Approval adds the subject to `subjects`. It does **not** create a selection or offering for the requesting faculty member.
+
+### Roster endpoints
+
+All roster endpoints require `subject_code`, `academic_year` and `semester_number`. The subject must exist in the catalog and belong to that semester, the academic year must exist, and only active student accounts can be added. Adds are idempotent, are written to the audit log, and never create feedback. Removing a roster entry does not delete feedback already submitted by that student.
 
 ## 7.8 Analytics — `/api/analytics`
 
@@ -365,9 +378,12 @@ Exact scores depend on the lexicon. The engine is deterministic and explainable.
 | Method | Path | Auth | Description |
 |--------|------|------|-------------|
 | `GET` | `/faculty/me` | Faculty | Own report (`format=csv` or `pdf`) |
+| `GET` | `/faculty/me/completion` | Faculty | Pending-student PDF for one owned subject and period |
 | `GET` | `/admin` | Admin | Department report (`format=csv` or `pdf`) |
 
-Both return a file download with `Content-Disposition`. Filters: `academic_year`, `semester_number`, `subject_code`; the admin report also accepts `faculty_id`.
+Both performance reports return a file download with `Content-Disposition`. Filters: `academic_year`, `semester_number`, `subject_code`; the admin report also accepts `faculty_id`.
+
+The completion report accepts only `format=pdf` plus the three scope parameters. It returns `409` when no verified roster exists and `404` when the faculty member does not teach the scope. Its pending table contains USN and name only; it never contains ratings, comments or internal feedback identifiers.
 
 ## 7.11 Error shapes
 

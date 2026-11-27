@@ -8,11 +8,12 @@ This page explains how the database is created, seeded and upgraded. All migrati
 
 | File | Purpose |
 |------|---------|
-| `database/schema.sql` | Creates the canonical 15-table schema |
+| `database/schema.sql` | Creates the canonical 16-table schema |
 | `database/seed.sql` | Inserts reference data (no user accounts) |
 | `database/migrations/001_additive_upgrade.sql` | Adds columns/constraints to a legacy database |
 | `database/migrations/002_faculty_subject_selections.sql` | Adds selections and subject requests |
 | `database/migrations/003_deactivate_backfilled_selections.sql` | Corrects selections backfilled by an earlier revision |
+| `database/migrations/004_student_enrollments.sql` | Adds the verified class-roster table |
 | `backend/app/schema.py` | Re-applies the additive changes at runtime, with an advisory lock |
 
 ## 6.2 Creating a fresh database
@@ -118,8 +119,9 @@ An explicit faculty selection creates or reuses its offering in the same transac
 2. Checks which required tables/columns/indexes exist.
 3. Creates only what is missing.
 4. Applies the data corrections for backfilled selections.
-5. Inserts the applied version into `schema_migrations` so each correction runs at most once.
-6. Commits and releases the lock.
+5. Adds the verified class-roster table when it is missing.
+6. Inserts the applied version into `schema_migrations` so each correction runs at most once.
+7. Commits and releases the lock.
 
 Guarantees, copied from the module docstring:
 
@@ -128,6 +130,7 @@ Guarantees, copied from the module docstring:
 - never assigns subjects to faculty automatically;
 - deactivates rows that an earlier migration backfilled, while keeping offerings and feedback intact;
 - adds the reversible student archive flag without changing existing accounts;
+- creates the empty verified class-roster table without enrolling anyone;
 - records applied corrections so each runs at most once;
 - serialises concurrent cold starts with an advisory lock.
 
@@ -141,6 +144,7 @@ For an existing database, run the files in order:
 psql -U postgres -d faculty_feedback -f database/migrations/001_additive_upgrade.sql
 psql -U postgres -d faculty_feedback -f database/migrations/002_faculty_subject_selections.sql
 psql -U postgres -d faculty_feedback -f database/migrations/003_deactivate_backfilled_selections.sql
+psql -U postgres -d faculty_feedback -f database/migrations/004_student_enrollments.sql
 ```
 
 Each file wraps its work in `BEGIN; … COMMIT;` and is idempotent.

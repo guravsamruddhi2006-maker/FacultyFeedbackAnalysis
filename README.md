@@ -77,6 +77,8 @@ FacultyInsight AI addresses each problem with a structured data model, server-en
 - Request a subject missing from the catalog.
 - Private dashboard: averages, distribution, question scores, trends, sentiment, insights.
 - Anonymised student comments.
+- Completion tracker for their own subjects, using the administrator-maintained class roster.
+- Pending-student PDF and a prepared WhatsApp reminder (shares aggregate counts only).
 - Download own CSV/PDF report.
 - Change own password.
 
@@ -86,6 +88,7 @@ FacultyInsight AI addresses each problem with a structured data model, server-en
 - Manage departments, academic years, subjects, questions and feedback periods.
 - Create and approve/reject/deactivate faculty.
 - Create, edit and deactivate students.
+- Maintain verified class rosters per subject, academic year and semester.
 - Review subject requests.
 - Manage other administrators.
 - Audit log.
@@ -97,6 +100,8 @@ FacultyInsight AI addresses each problem with a structured data model, server-en
 - Login rate limiting.
 - Security headers, CORS allow-list, generic error responses.
 - Additive, idempotent database migrations that never drop data.
+- Installable PWA shell with an offline page and explicit update prompt (not a native app).
+- Responsive navy/teal interface with keyboard focus states and reduced-motion support.
 - Automated backend and frontend tests.
 
 ## The three roles
@@ -230,9 +235,9 @@ python -c "import secrets; print(secrets.token_urlsafe(48))"
 
 ## Database setup
 
-- **Schema:** `database/schema.sql` — 15 core tables + `schema_migrations`.
+- **Schema:** `database/schema.sql` — 16 core tables + `schema_migrations`.
 - **Seed:** `database/seed.sql` — 1 department, 8 semesters, 4 academic years, 5 questions, 54 subjects (none for semester 8), **no users**.
-- **Migrations:** `database/migrations/001`–`003`, all additive and idempotent.
+- **Migrations:** `database/migrations/001`–`004`, all additive and idempotent.
 - **Runtime upgrade:** `backend/app/schema.py` applies missing changes on first use with an advisory lock.
 
 Full schema and relationships: [05 — Database Schema](docs/05-database-schema.md) · [06 — Migrations and Seeding](docs/06-migrations-and-seeding.md).
@@ -258,8 +263,8 @@ Frontend on <http://localhost:5173>, backend on <http://localhost:8000>. Harden 
 ## Testing
 
 ```powershell
-# Backend (clears DATABASE_URL so tests use the local test database)
-$env:DATABASE_URL=""
+# Backend (force an explicit local URL; PowerShell removes a variable set to "")
+$env:DATABASE_URL="postgresql://postgres:<local-password>@localhost:5432/faculty_feedback"
 $env:TEST_DB_NAME="faculty_feedback_test"
 python -m pytest backend\tests -q
 
@@ -275,8 +280,9 @@ Last local results:
 
 | Check | Result |
 |-------|--------|
-| Backend pytest | **77 passed** |
-| Frontend Vitest | **12 passed** (3 files) |
+| Backend pytest | **86 passed** |
+| Frontend Vitest | **21 passed** (6 files) |
+| Playwright PWA/responsive spec | **8 passed** |
 | TypeScript + Vite build | **Passed** |
 
 See [18 — Testing](docs/18-testing.md) for the test database setup and the `DATABASE_URL` caveat.
@@ -303,7 +309,7 @@ faculty-feedback-system/
 ├── frontend/       React + TypeScript SPA
 ├── database/       schema.sql, seed.sql, migrations
 ├── ml/             Optional sentiment training assets
-├── docs/           22-document set + diagrams
+├── docs/           23-document set + diagrams
 ├── api/index.py    Vercel serverless entry
 ├── docker-compose.yml
 └── vercel.json
@@ -329,7 +335,7 @@ Full review: [15 — Security and Privacy](docs/15-security-and-privacy.md).
 
 - Single-department design; no multi-tenancy.
 - Sentiment is a transparent **lexicon baseline** (`lexicon-v1`); the TF-IDF model is **not active** because its metadata says `"validated": false`.
-- No email/SMS notifications, chat, mobile app or offline mode.
+- No email/SMS notifications, chat or native mobile app. The web app is installable as a PWA, but there is no offline data entry: feedback, rosters and reports require a live connection.
 - Login rate limiting is per process, not global.
 - No token revocation list; logout is client-side.
 - No CI pipeline; tests run manually.
@@ -372,6 +378,7 @@ Roadmap: [22 — Future Enhancements](docs/22-future-enhancements.md).
 | 20 | [Known Limitations](docs/20-known-limitations.md) | Honest scope boundaries |
 | 21 | [Glossary](docs/21-glossary.md) | Domain, technical and AI terms |
 | 22 | [Future Enhancements](docs/22-future-enhancements.md) | Prioritised roadmap |
+| 23 | [PWA and Completion Tracking](docs/23-pwa-and-completion-tracking.md) | PWA, responsive UI, rosters, completion tracker, PDF, WhatsApp, verification |
 
 ---
 

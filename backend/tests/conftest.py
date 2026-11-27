@@ -34,8 +34,8 @@ TEST_PASSWORD_HASH = hash_password(TEST_PASSWORD)
 
 TRUNCATE_ORDER = (
     "audit_logs, feedback_answer, feedback, feedback_periods, feedback_questions, "
-    "course_offerings, faculty_subject_selections, subject_requests, students, faculty, "
-    "admins, subjects, academic_years, semesters, departments"
+    "course_offerings, student_enrollments, faculty_subject_selections, subject_requests, "
+    "students, faculty, admins, subjects, academic_years, semesters, departments"
 )
 
 
@@ -43,6 +43,30 @@ def _base_params() -> dict[str, Any]:
     if "conninfo" in settings.db_conninfo:
         return conninfo_to_dict(settings.db_conninfo["conninfo"])
     return dict(settings.db_conninfo)
+
+
+_LOCAL_HOSTS = {"", "localhost", "127.0.0.1", "::1"}
+
+
+def _assert_local_test_database(params: dict[str, Any]) -> None:
+    """Refuse to run the destructive test fixture against a remote host.
+
+    The fixture drops and recreates the public schema, so pointing it at a
+    remote database would be destructive. ``DATABASE_URL`` from ``backend/.env``
+    may point at a hosted database, and an empty PowerShell assignment can
+    remove the variable instead of blanking it, so check the resolved host
+    explicitly.
+    """
+    host = str(params.get("host") or "").strip()
+    hostaddr = str(params.get("hostaddr") or "").strip()
+    local_host = not host or host in _LOCAL_HOSTS or host.startswith("/")
+    local_addr = hostaddr in {"127.0.0.1", "::1"}
+    if not (local_host or local_addr):
+        raise RuntimeError(
+            "Refusing to run destructive tests against non-local database host "
+            f"{host or hostaddr!r}. Set DATABASE_URL to an explicit local "
+            "PostgreSQL URL (localhost/127.0.0.1) and retry."
+        )
 
 
 def _test_params() -> dict[str, Any]:
@@ -63,6 +87,7 @@ def _statements(sql: str) -> Iterator[str]:
 def test_database() -> Iterator[None]:
     """Create and initialise the isolated test database once per session."""
     maintenance = dict(_base_params())
+    _assert_local_test_database(maintenance)
     maintenance["dbname"] = "postgres"
     admin = psycopg.connect(**maintenance, autocommit=True)
     try:

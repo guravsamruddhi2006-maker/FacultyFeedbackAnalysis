@@ -227,3 +227,61 @@ export interface FilterOptions {
   subjects: Array<{ subject_code: string; subject_name: string }>;
   faculty: Array<{ faculty_id: number; name: string }>;
 }
+
+export interface CompletionPeriod {
+  start_date: string | null;
+  end_date: string | null;
+  is_open: boolean;
+}
+
+export interface PendingStudent {
+  student_id: string;
+  name: string;
+}
+
+export interface CompletionSummary {
+  subject_code: string;
+  subject_name: string;
+  academic_year: string;
+  semester_number: number;
+  period: CompletionPeriod | null;
+  roster_available: boolean;
+  eligible_count: number;
+  submitted_count: number;
+  pending_count: number;
+  completion_percentage: number;
+  pending_students: PendingStudent[];
+  privacy_notice: string;
+  methodology: string;
+}
+
+export interface EnrollmentRow {
+  enrollment_id: number;
+  student_id: string;
+  name: string;
+  department_id: number;
+  department_name: string;
+  is_active: boolean;
+  created_at: string | null;
+}
+
+export interface EnrollmentListResponse {
+  scope: {
+    subject_code: string;
+    subject_name: string;
+    academic_year: string;
+    semester_number: number;
+  };
+  items: EnrollmentRow[];
+  total: number;
+  methodology: string;
+}
+
+export interface EnrollmentBulkResult {
+  message: string;
+  added: string[];
+  added_count: number;
+  skipped_existing: number;
+  unknown: string[];
+  inactive: string[];
+}

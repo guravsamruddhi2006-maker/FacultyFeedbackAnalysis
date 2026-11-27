@@ -37,6 +37,8 @@ _BACKFILL_CORRECTION = "003_deactivate_backfilled_selections"
 
 _STUDENT_ACTIVE_SUPPORT = "004_student_archive_support"
 
+_ENROLLMENT_SUPPORT = "004_student_enrollment_roster"
+
 _SCHEMA_SQL = """
 CREATE TABLE IF NOT EXISTS faculty_subject_selections (
     selection_id    SERIAL PRIMARY KEY,
@@ -151,6 +153,36 @@ ON CONFLICT (version) DO NOTHING;
 """
 
 
+# Verified class rosters used by the faculty completion tracker. Only rows an
+# administrator explicitly adds count as eligible students; the tracker never
+# treats every registered student as enrolled.
+_ENROLLMENT_SQL = f"""
+CREATE TABLE IF NOT EXISTS schema_migrations (
+    version     VARCHAR(80) PRIMARY KEY,
+    applied_at  TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE TABLE IF NOT EXISTS student_enrollments (
+    enrollment_id   SERIAL PRIMARY KEY,
+    student_id      VARCHAR(50) NOT NULL REFERENCES students(student_id) ON UPDATE CASCADE ON DELETE CASCADE,
+    subject_code    VARCHAR(20) NOT NULL REFERENCES subjects(subject_code) ON UPDATE CASCADE ON DELETE RESTRICT,
+    academic_year   VARCHAR(9) NOT NULL REFERENCES academic_years(academic_year) ON UPDATE CASCADE ON DELETE RESTRICT,
+    semester_number INTEGER NOT NULL REFERENCES semesters(semester_number) ON UPDATE CASCADE ON DELETE RESTRICT,
+    created_at      TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    CONSTRAINT student_enrollments_unique UNIQUE (student_id, subject_code, academic_year, semester_number)
+);
+
+CREATE INDEX IF NOT EXISTS idx_student_enrollments_scope
+    ON student_enrollments(subject_code, academic_year, semester_number);
+CREATE INDEX IF NOT EXISTS idx_student_enrollments_student
+    ON student_enrollments(student_id);
+
+INSERT INTO schema_migrations (version)
+VALUES ('{_ENROLLMENT_SUPPORT}')
+ON CONFLICT (version) DO NOTHING;
+"""
+
+
 def _tables_present(conn: psycopg.Connection) -> bool:
     with conn.cursor() as cur:
         cur.execute(
@@ -217,6 +249,15 @@ def ensure_runtime_schema() -> None:
                     cur.execute(_STUDENT_ACTIVE_SQL)
             conn.commit()
             logger.info("Added the reversible student archive flag.")
+
+        if not _migration_applied(conn, _ENROLLMENT_SUPPORT):
+            conn.rollback()
+            with conn.transaction():
+                with conn.cursor() as cur:
+                    cur.execute("SELECT pg_advisory_xact_lock(hashtext('facultyinsight_schema_005'))")
+                    cur.execute(_ENROLLMENT_SQL)
+            conn.commit()
+            logger.info("Created the verified class roster table.")
 
         _schema_ready = True
     except psycopg.Error:

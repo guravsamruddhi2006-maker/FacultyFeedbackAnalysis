@@ -18,10 +18,39 @@ from app.schemas.admin import (
     SubjectRequestReview,
 )
 from app.schemas.common import MessageResponse
+from app.schemas.completion import EnrollmentBulkCreate, EnrollmentCreate
 from app.services.audit import write_audit
 
 
 router = APIRouter(prefix="/admin", tags=["Admin"])
+
+
+def _validate_enrollment_scope(cur, subject_code: str, academic_year: str, semester_number: int) -> dict:
+    """Validate the catalog scope before touching the roster.
+
+    A roster row must always describe a real subject in its own semester and a
+    real academic year. This keeps completion tracking aligned with the catalog
+    and prevents typos from creating orphan scopes.
+    """
+    cur.execute(
+        "SELECT subject_code, subject_name, semester_number FROM subjects WHERE subject_code = %s",
+        (subject_code,),
+    )
+    subject = cur.fetchone()
+    if subject is None:
+        raise HTTPException(status_code=404, detail="Subject not found in the catalog.")
+    if subject["semester_number"] != semester_number:
+        raise HTTPException(
+            status_code=400,
+            detail=(
+                f"{subject_code} belongs to semester {subject['semester_number']}; "
+                f"use semester {subject['semester_number']} for its roster."
+            ),
+        )
+    cur.execute("SELECT 1 FROM academic_years WHERE academic_year = %s", (academic_year,))
+    if cur.fetchone() is None:
+        raise HTTPException(status_code=400, detail="Academic year is not available.")
+    return subject
 
 
 @router.get("/dashboard")
@@ -345,6 +374,233 @@ def get_student_detail(
             request=request,
         )
     return {**student, "submissions": submissions, "audit_notice": "This access was recorded in the audit log."}
+
+
+@router.get("/enrollments")
+def list_enrollments(
+    subject_code: str = Query(min_length=2, max_length=20),
+    academic_year: str = Query(pattern=r"^[0-9]{4}-[0-9]{2}$"),
+    semester_number: int = Query(ge=1, le=8),
+    _: Principal = Depends(admin_required),
+    conn: Connection = Depends(get_db),
+):
+    """List the verified roster for one subject, year and semester."""
+    code = subject_code.strip().upper()
+    with conn.cursor() as cur:
+        subject = _validate_enrollment_scope(cur, code, academic_year, semester_number)
+        cur.execute(
+            """
+            SELECT se.enrollment_id, se.student_id, st.name, st.department_id,
+                   d.name AS department_name, st.is_active, se.created_at
+            FROM student_enrollments se
+            JOIN students st ON st.student_id = se.student_id
+            JOIN departments d ON d.id = st.department_id
+            WHERE se.subject_code = %s
+              AND se.academic_year = %s
+              AND se.semester_number = %s
+            ORDER BY se.student_id
+            """,
+            (code, academic_year, semester_number),
+        )
+        items = list(cur.fetchall())
+    for item in items:
+        item["created_at"] = item["created_at"].isoformat() if item["created_at"] else None
+    return {
+        "scope": {
+            "subject_code": subject["subject_code"],
+            "subject_name": subject["subject_name"],
+            "academic_year": academic_year,
+            "semester_number": semester_number,
+        },
+        "items": items,
+        "total": len(items),
+        "methodology": (
+            "Only these students count as eligible for completion tracking. "
+            "Registered students are never assumed to be enrolled."
+        ),
+    }
+
+
+@router.post("/enrollments", status_code=status.HTTP_201_CREATED)
+def add_enrollment(
+    payload: EnrollmentCreate,
+    request: Request,
+    current_user: Principal = Depends(admin_required),
+    conn: Connection = Depends(get_db),
+):
+    """Add one verified student to a class roster (idempotent)."""
+    created = False
+    with conn.transaction():
+        with conn.cursor() as cur:
+            _validate_enrollment_scope(
+                cur, payload.subject_code, payload.academic_year, payload.semester_number
+            )
+            cur.execute(
+                "SELECT student_id, name, is_active FROM students WHERE student_id = %s",
+                (payload.student_id,),
+            )
+            student = cur.fetchone()
+            if student is None:
+                raise HTTPException(status_code=404, detail="Student not found.")
+            if not student["is_active"]:
+                raise HTTPException(
+                    status_code=400,
+                    detail="This student account is archived. Restore it before adding it to a roster.",
+                )
+            cur.execute(
+                """
+                INSERT INTO student_enrollments
+                    (student_id, subject_code, academic_year, semester_number)
+                VALUES (%s, %s, %s, %s)
+                ON CONFLICT (student_id, subject_code, academic_year, semester_number)
+                DO NOTHING
+                RETURNING enrollment_id, created_at
+                """,
+                (
+                    payload.student_id,
+                    payload.subject_code,
+                    payload.academic_year,
+                    payload.semester_number,
+                ),
+            )
+            row = cur.fetchone()
+            created = row is not None
+        if created:
+            write_audit(
+                conn,
+                current_user,
+                "student_enrollment.add",
+                entity_type="student_enrollment",
+                entity_id=row["enrollment_id"],
+                details={
+                    "student_id": payload.student_id,
+                    "subject_code": payload.subject_code,
+                    "academic_year": payload.academic_year,
+                    "semester_number": payload.semester_number,
+                },
+                request=request,
+            )
+    return {
+        "message": (
+            "Student added to the verified roster."
+            if created
+            else "This student is already on the roster for this subject, year and semester."
+        ),
+        "created": created,
+        "student_id": payload.student_id,
+        "student_name": student["name"],
+    }
+
+
+@router.post("/enrollments/bulk", status_code=status.HTTP_201_CREATED)
+def bulk_add_enrollments(
+    payload: EnrollmentBulkCreate,
+    request: Request,
+    current_user: Principal = Depends(admin_required),
+    conn: Connection = Depends(get_db),
+):
+    """Add up to 500 verified students at once.
+
+    Unknown and archived accounts are reported back instead of being silently
+    enrolled. Duplicate USNs in the request are collapsed before insertion.
+    """
+    requested = list(dict.fromkeys(payload.student_ids))
+    added: list[str] = []
+    with conn.transaction():
+        with conn.cursor() as cur:
+            _validate_enrollment_scope(
+                cur, payload.subject_code, payload.academic_year, payload.semester_number
+            )
+            cur.execute(
+                "SELECT student_id, is_active FROM students WHERE student_id = ANY(%s)",
+                (requested,),
+            )
+            found = {row["student_id"]: row["is_active"] for row in cur.fetchall()}
+            unknown = [student_id for student_id in requested if student_id not in found]
+            inactive = [student_id for student_id in requested if found.get(student_id) is False]
+            for student_id in requested:
+                if found.get(student_id) is not True:
+                    continue
+                cur.execute(
+                    """
+                    INSERT INTO student_enrollments
+                        (student_id, subject_code, academic_year, semester_number)
+                    VALUES (%s, %s, %s, %s)
+                    ON CONFLICT (student_id, subject_code, academic_year, semester_number)
+                    DO NOTHING
+                    RETURNING student_id
+                    """,
+                    (
+                        student_id,
+                        payload.subject_code,
+                        payload.academic_year,
+                        payload.semester_number,
+                    ),
+                )
+                row = cur.fetchone()
+                if row is not None:
+                    added.append(row["student_id"])
+        if added:
+            write_audit(
+                conn,
+                current_user,
+                "student_enrollment.bulk_add",
+                entity_type="student_enrollment",
+                entity_id=f"{payload.subject_code}:{payload.academic_year}:{payload.semester_number}",
+                details={
+                    "added": len(added),
+                    "skipped_existing": len(requested) - len(added) - len(unknown) - len(inactive),
+                    "unknown": len(unknown),
+                    "inactive": len(inactive),
+                },
+                request=request,
+            )
+    return {
+        "message": f"{len(added)} student(s) added to the verified roster.",
+        "added": added,
+        "added_count": len(added),
+        "skipped_existing": len(requested) - len(added) - len(unknown) - len(inactive),
+        "unknown": unknown,
+        "inactive": inactive,
+    }
+
+
+@router.delete("/enrollments/{enrollment_id}", response_model=MessageResponse)
+def remove_enrollment(
+    enrollment_id: int,
+    request: Request,
+    current_user: Principal = Depends(admin_required),
+    conn: Connection = Depends(get_db),
+):
+    """Remove one student from a roster without touching any feedback."""
+    with conn.transaction():
+        with conn.cursor() as cur:
+            cur.execute(
+                """
+                DELETE FROM student_enrollments
+                WHERE enrollment_id = %s
+                RETURNING enrollment_id, student_id, subject_code, academic_year, semester_number
+                """,
+                (enrollment_id,),
+            )
+            row = cur.fetchone()
+            if row is None:
+                raise HTTPException(status_code=404, detail="Roster entry not found.")
+        write_audit(
+            conn,
+            current_user,
+            "student_enrollment.remove",
+            entity_type="student_enrollment",
+            entity_id=enrollment_id,
+            details={
+                "student_id": row["student_id"],
+                "subject_code": row["subject_code"],
+                "academic_year": row["academic_year"],
+                "semester_number": row["semester_number"],
+            },
+            request=request,
+        )
+    return MessageResponse(message="Student removed from the verified roster. Feedback was not changed.")
 
 
 @router.get("/analytics/faculty/{faculty_id}")

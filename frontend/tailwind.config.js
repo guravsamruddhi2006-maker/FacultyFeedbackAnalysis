@@ -40,6 +40,19 @@ export default {
         md: "calc(var(--radius) - 2px)",
         sm: "calc(var(--radius) - 4px)",
       },
+      fontFamily: {
+        sans: ["Inter", "ui-sans-serif", "system-ui", "-apple-system", "Segoe UI", "sans-serif"],
+        display: [
+          "Iowan Old Style",
+          "Palatino Linotype",
+          "Palatino",
+          "Georgia",
+          "serif",
+        ],
+      },
+      boxShadow: {
+        academic: "0 18px 40px -28px rgba(11, 31, 58, 0.45)",
+      },
     },
   },
   plugins: [],

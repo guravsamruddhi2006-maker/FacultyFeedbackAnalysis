@@ -204,7 +204,7 @@ npm run build
 
 # tests
 cd ..\
-$env:DATABASE_URL=""
+$env:DATABASE_URL="postgresql://postgres:<local-password>@localhost:5432/faculty_feedback"
 $env:TEST_DB_NAME="faculty_feedback_test"
 python -m pytest backend\tests -q
 

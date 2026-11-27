@@ -123,7 +123,7 @@ frontend/
 
 ```text
 database/
-├── schema.sql                         Canonical 15-table schema
+├── schema.sql                         Canonical 16-table schema
 ├── seed.sql                           Reference data only (no users)
 ├── migrations/
 │   ├── 001_additive_upgrade.sql       Legacy columns/constraints

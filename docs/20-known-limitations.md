@@ -12,9 +12,9 @@ Honest scope boundaries. These are deliberate trade-offs or known gaps, not hidd
 | No admin assignment of subjects | Faculty declare their own teaching load; admins approve requests but do not assign. |
 | No notifications | No email, SMS or push. Users must check the app. |
 | No chat or messaging | Not a communication platform. |
-| No mobile app | Responsive web only. |
+| No native mobile app | Responsive web app, installable as a PWA; not an APK or App Store listing. |
 | English only | UI and NLP are English. |
-| No offline mode | Requires network access. |
+| No offline data entry | The app shell and an offline page are cached, but feedback, rosters and reports require network access. |
 
 ## 20.2 AI / ML
 

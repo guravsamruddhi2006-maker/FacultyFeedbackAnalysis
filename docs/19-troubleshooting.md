@@ -39,7 +39,7 @@ In production, replace `localhost:8000` with your domain.
 | `database "faculty_feedback" does not exist` | DB not created | `CREATE DATABASE faculty_feedback;` |
 | `relation "..." does not exist` | Schema not loaded | Run `database\schema.sql` |
 | `503` from the API | DB unreachable from the server | Check `DATABASE_URL` / Neon status |
-| Tests hang | `.env` points at a remote DB | `$env:DATABASE_URL=""` for the test process |
+| Tests hang or refuse to start | `.env` points at a remote DB | Set `DATABASE_URL` to an explicit local URL for the test process |
 | `too many connections` | Pool exhausted on Neon | Use the pooled connection string |
 
 ### Verify the resolved settings safely

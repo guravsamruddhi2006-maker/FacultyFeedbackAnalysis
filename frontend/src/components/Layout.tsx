@@ -3,7 +3,9 @@ import { NavLink, Outlet, useNavigate } from "react-router-dom";
 import {
   BarChart3,
   BookOpen,
+  ClipboardCheck,
   ClipboardList,
+  Download,
   GraduationCap,
   KeyRound,
   LayoutDashboard,
@@ -20,6 +22,7 @@ import {
 import { useAuth } from "@/context/AuthContext";
 import { useToast } from "@/context/ToastContext";
 import { api, ApiError } from "@/lib/api";
+import { isStandalone } from "@/lib/pwa";
 import { cn, initials } from "@/lib/utils";
 import { Button, Card, CardContent, Field, Modal, PasswordInput } from "@/components/ui";
 
@@ -27,6 +30,7 @@ const navByRole = {
   student: [{ to: "/student", label: "My feedback", icon: ClipboardList }],
   faculty: [
     { to: "/faculty", label: "Teaching overview", icon: LayoutDashboard },
+    { to: "/faculty/completion", label: "Completion tracker", icon: ClipboardCheck },
     { to: "/faculty/subjects", label: "My subjects", icon: BookOpen },
     { to: "/faculty/comments", label: "Student comments", icon: ScrollText },
     { to: "/faculty/profile", label: "My profile", icon: UserRound },
@@ -36,6 +40,7 @@ const navByRole = {
     { to: "/admin/analytics", label: "Analytics", icon: BarChart3 },
     { to: "/admin/faculty", label: "Faculty", icon: GraduationCap },
     { to: "/admin/students", label: "Students", icon: Users },
+    { to: "/admin/rosters", label: "Class rosters", icon: ClipboardCheck },
     { to: "/admin/catalog", label: "Catalog", icon: BookOpen },
     { to: "/admin/admins", label: "Administrators", icon: UserCog },
     { to: "/admin/audit", label: "Audit log", icon: ShieldCheck },
@@ -45,10 +50,10 @@ const navByRole = {
 function Brand() {
   return (
     <div className="flex items-center gap-2.5">
-      <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-primary text-white shadow-sm">
+      <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-primary text-white shadow-sm ring-1 ring-teal-400/50">
         <GraduationCap className="h-5 w-5" />
       </div>
-      <p className="text-sm font-semibold leading-tight text-slate-900">FacultyInsight AI</p>
+      <p className="font-display text-base font-semibold leading-tight text-slate-900">FacultyInsight AI</p>
     </div>
   );
 }
@@ -91,7 +96,7 @@ export function AppLayout() {
           <X className="h-5 w-5 text-slate-500" />
         </button>
       </div>
-      <nav className="flex-1 space-y-1 px-3">
+      <nav className="flex-1 space-y-1 overflow-y-auto px-3 pb-3">
         {items.map((item) => (
           <NavLink
             key={item.to}
@@ -102,7 +107,7 @@ export function AppLayout() {
               cn(
                 "flex items-center gap-3 rounded-md px-3 py-2 text-sm font-medium transition-colors",
                 isActive
-                  ? "bg-blue-50 text-primary"
+                  ? "bg-accent text-accent-foreground"
                   : "text-slate-600 hover:bg-slate-100 hover:text-slate-900",
               )
             }
@@ -112,7 +117,7 @@ export function AppLayout() {
           </NavLink>
         ))}
       </nav>
-      <div className="border-t p-3">
+      <div className="shrink-0 border-t p-3">
         <div className="flex items-center gap-3 rounded-lg bg-slate-50 p-3">
           <div className="flex h-9 w-9 items-center justify-center rounded-full bg-primary/10 text-sm font-semibold text-primary">
             {initials(user.name)}
@@ -122,6 +127,17 @@ export function AppLayout() {
             <p className="truncate text-xs capitalize text-slate-500">{user.role}</p>
           </div>
         </div>
+        {isStandalone() ? null : (
+          <Button
+            variant="ghost"
+            size="sm"
+            className="mt-2 w-full justify-start"
+            icon={<Download className="h-3.5 w-3.5" />}
+            onClick={() => window.dispatchEvent(new Event("facultyinsight:install-request"))}
+          >
+            Install app
+          </Button>
+        )}
         <div className="mt-2 grid grid-cols-2 gap-2">
           <Button variant="outline" size="sm" icon={<KeyRound className="h-3.5 w-3.5" />} onClick={() => setPasswordOpen(true)}>
             Password
@@ -143,8 +159,8 @@ export function AppLayout() {
   );
 
   return (
-    <div className="min-h-screen bg-slate-50">
-      <aside className="fixed inset-y-0 left-0 z-30 hidden w-64 border-r bg-white lg:block">{sidebar}</aside>
+    <div className="min-h-screen bg-background">
+      <aside className="fixed inset-y-0 left-0 z-30 hidden w-64 border-r bg-white/95 backdrop-blur lg:block">{sidebar}</aside>
       {mobileOpen ? (
         <div className="fixed inset-0 z-40 lg:hidden">
           <div className="absolute inset-0 bg-slate-900/40" onClick={() => setMobileOpen(false)} />
@@ -160,7 +176,7 @@ export function AppLayout() {
           <Brand />
           <div className="w-6" />
         </header>
-        <main className="mx-auto w-full max-w-7xl px-4 py-6 sm:px-6 lg:px-8">
+        <main className="mx-auto w-full max-w-7xl px-4 py-6 pb-10 sm:px-6 lg:px-8">
           <Outlet />
         </main>
       </div>
@@ -211,7 +227,7 @@ export function AppLayout() {
 
 export function AuthShell({ children, title, subtitle }: { children: ReactNode; title: string; subtitle: string }) {
   return (
-    <div className="flex min-h-screen flex-col items-center justify-center bg-slate-50 p-6">
+    <div className="flex min-h-screen flex-col items-center justify-center bg-background p-6">
       <div className="mb-6">
         <Brand />
       </div>

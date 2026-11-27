@@ -2,7 +2,7 @@
 
 > **FacultyInsight AI** · Documentation set · [Back to index](../README.md#documentation-index)
 
-The canonical schema is `database/schema.sql`. It creates **15 core tables** plus one runtime bookkeeping table (`schema_migrations`). It is safe to run against an empty database.
+The canonical schema is `database/schema.sql`. It creates **16 core tables** plus one runtime bookkeeping table (`schema_migrations`). It is safe to run against an empty database.
 
 ![Entity relationship diagram](./images/database-er-diagram.png)
 
@@ -15,6 +15,7 @@ The canonical schema is `database/schema.sql`. It creates **15 core tables** plu
 | Reference data | `departments`, `semesters`, `academic_years`, `subjects`, `feedback_questions` |
 | Accounts | `faculty`, `students`, `admins` |
 | Teaching load | `faculty_subject_selections`, `subject_requests`, `course_offerings` |
+| Rosters | `student_enrollments` |
 | Feedback | `feedback_periods`, `feedback`, `feedback_answer` |
 | Operations | `audit_logs`, `schema_migrations` |
 
@@ -119,6 +120,21 @@ A faculty member's own declaration that they teach a subject in a given year and
 | `updated_at` | `TIMESTAMPTZ` | Nullable |
 
 Unique on `(faculty_id, subject_code, academic_year, semester_number)`.
+
+### `student_enrollments`
+
+Administrator-maintained verified class roster. Only these rows count as eligible students for faculty completion tracking; registered students are never assumed to be enrolled.
+
+| Column | Type | Constraints |
+|--------|------|-------------|
+| `enrollment_id` | `SERIAL` | Primary key |
+| `student_id` | `VARCHAR(50)` | `NOT NULL`, FK → `students`, `ON DELETE CASCADE` |
+| `subject_code` | `VARCHAR(20)` | `NOT NULL`, FK → `subjects`, `ON DELETE RESTRICT` |
+| `academic_year` | `VARCHAR(9)` | `NOT NULL`, FK → `academic_years`, `ON DELETE RESTRICT` |
+| `semester_number` | `INTEGER` | `NOT NULL`, FK → `semesters`, `ON DELETE RESTRICT` |
+| `created_at` | `TIMESTAMPTZ` | `NOT NULL DEFAULT CURRENT_TIMESTAMP` |
+
+Unique on `(student_id, subject_code, academic_year, semester_number)`. The row is a roster fact only: it holds no rating, comment, sentiment or feedback reference.
 
 ### `subject_requests`
 
@@ -228,6 +244,8 @@ Created by `backend/app/schema.py` (and migration 003) when runtime corrections 
 | `idx_course_offerings_scope` | `course_offerings` | `academic_year, semester_number, subject_code` |
 | `idx_faculty_selections_faculty` | `faculty_subject_selections` | `faculty_id, is_active` |
 | `idx_faculty_selections_scope` | `faculty_subject_selections` | `academic_year, semester_number, subject_code, is_active` |
+| `idx_student_enrollments_scope` | `student_enrollments` | `subject_code, academic_year, semester_number` |
+| `idx_student_enrollments_student` | `student_enrollments` | `student_id` |
 | `idx_subject_requests_pending_code` | `subject_requests` | unique on `subject_code` where `status='pending'` |
 | `idx_subject_requests_faculty` | `subject_requests` | `faculty_id, created_at DESC` |
 | `idx_subject_requests_status` | `subject_requests` | `status, created_at DESC` |
@@ -244,6 +262,7 @@ Created by `backend/app/schema.py` (and migration 003) when runtime corrections 
 - **Deleting a student cascades to their feedback.** The admin UI deactivates rather than deletes, so this rarely happens.
 - **Deleting a question is restricted** if answers reference it.
 - **Approving a subject request only adds the subject to the catalog.** It does not create a selection or offering.
+- **Completion eligibility comes only from `student_enrollments`.** An empty roster makes completion explicitly unavailable; removing a roster row never deletes feedback.
 
 ## 5.9 Related documents
 

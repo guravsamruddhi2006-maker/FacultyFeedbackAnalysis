@@ -53,21 +53,21 @@ The suite creates its own schema, so it does not need `schema.sql` loaded first.
 From the repository root, with the virtual environment active:
 
 ```powershell
-$env:DATABASE_URL=""
+$env:DATABASE_URL="postgresql://postgres:<local-password>@localhost:5432/faculty_feedback"
 $env:TEST_DB_NAME="faculty_feedback_test"
 python -m pytest backend\tests -q
 ```
 
-### Why `DATABASE_URL` is cleared
+### Why the test URL is set explicitly
 
-If a developer's `.env` contains a remote production `DATABASE_URL`, the settings object will use it and the suite may hang trying to reach a remote host (or, worse, touch real data). Setting `DATABASE_URL=""` for the test process forces the individual `DB_*` settings, which point at local PostgreSQL.
+If a developer's `.env` contains a remote production `DATABASE_URL`, the settings object will use it and the suite may hang trying to reach a remote host (or, worse, touch real data). In PowerShell, `$env:DATABASE_URL=""` removes the variable instead of blanking it, so dotenv re-loads the remote value from `.env`. Set an explicit local URL for the test process, URL-encoding any special characters in the password.
 
-This is a test-process override only. It does not change `.env` or application code.
+The test fixture also refuses to connect to a non-local host before it drops or recreates the schema, so a remote value fails fast instead of risking data. This is a test-process override only; it does not change `.env` or application code.
 
 ### Last local result
 
 ```text
-77 passed
+86 passed
 ```
 
 Environment: local PostgreSQL, test database `faculty_feedback_test`. One deprecation warning from Starlette's `TestClient` about `httpx`; it does not affect results.
@@ -88,11 +88,11 @@ npm test -- --reporter=dot
 ### Last local result
 
 ```text
-Test Files  3 passed (3)
-Tests       12 passed (12)
+Test Files  6 passed (6)
+Tests       21 passed (21)
 ```
 
-A React `act(...)` warning is printed by one auth test. It is a warning, not a failure.
+The suite includes WhatsApp message privacy, PWA asset integrity and the faculty completion page. A React `act(...)` warning may still appear during auth-related tests; it is a warning, not a failure.
 
 ## 18.4 Type check and production build
 
@@ -107,7 +107,7 @@ This runs `tsc --noEmit` and then `vite build`. The last local run completed suc
 
 ```powershell
 # 1. backend tests
-$env:DATABASE_URL=""
+$env:DATABASE_URL="postgresql://postgres:<local-password>@localhost:5432/faculty_feedback"
 $env:TEST_DB_NAME="faculty_feedback_test"
 python -m pytest backend\tests -q
 
@@ -119,7 +119,7 @@ npm test -- --reporter=dot
 npm run build
 ```
 
-Expected: 77 backend tests pass, 12 frontend tests pass, build succeeds.
+Expected: 86 backend tests pass, 21 frontend tests pass, build succeeds.
 
 ## 18.6 What the tests cover
 
@@ -136,12 +136,16 @@ Expected: 77 backend tests pass, 12 frontend tests pass, build succeeds.
 | Analytics and insights | Yes |
 | Sentiment and topics | Yes |
 | CSV/PDF reports | Yes |
+| Completion counts, roster authorization, privacy and pending PDF | Yes |
+| WhatsApp reminder content and encoding | Yes |
+| PWA manifest, icons, service worker and offline shell | Yes |
+| Responsive sign-in layout at 320–1920 px (Playwright) | Yes |
 | Rate limiting | Yes |
 | Admin recovery | Yes |
 
 ## 18.7 What the tests do **not** cover
 
-- Browser rendering beyond the three component tests.
+- Browser rendering beyond component tests and the public responsive/PWA Playwright spec.
 - Real Vercel serverless behaviour (cold starts, 30-second limit).
 - Neon network failures.
 - Load/performance testing.
@@ -152,7 +156,7 @@ Expected: 77 backend tests pass, 12 frontend tests pass, build succeeds.
 
 | Symptom | Likely cause |
 |---------|--------------|
-| Tests hang | `DATABASE_URL` points to a remote host — clear it |
+| Tests hang or refuse to start | `DATABASE_URL` points to a remote host — set an explicit local URL |
 | `database ... does not exist` | Create `faculty_feedback_test` |
 | `password authentication failed` | Wrong local `DB_PASSWORD` |
 | Port/integration errors | Local PostgreSQL not running |
@@ -179,7 +183,7 @@ Do not weaken or skip existing tests to make a change pass. Fix the cause.
 
 ## 18.10 CI note
 
-There is no CI pipeline configured in the repository. The commands above are run manually. If you add CI, provision a PostgreSQL service, set `TEST_DB_NAME`, and clear `DATABASE_URL` in the job environment.
+There is no CI pipeline configured in the repository. The commands above are run manually. If you add CI, provision a PostgreSQL service, set `TEST_DB_NAME`, and point `DATABASE_URL` at the local test service. The suite refuses non-local hosts.
 
 ## 18.11 Related documents
 
